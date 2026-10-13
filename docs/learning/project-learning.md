@@ -349,3 +349,35 @@ For every major implementation step:
 6. Document what was learned.
 7. Record important interview questions.
 8. Commit the completed changes to Git.
+
+## Python Environment Setup and Troubleshooting
+
+### What is a virtual environment?
+A virtual environment isolates the Python dependencies of a project
+from those of other projects.
+
+### What is pip?
+pip is Python's package installer, used to install and manage
+third-party libraries.
+
+### Python vs VS Code
+Python executes code, while VS Code provides the editor and
+development tools. VS Code must use the correct Python interpreter.
+
+### PowerShell activation issue
+PowerShell blocked the virtual environment's Activate.ps1 script
+because of its execution policy.
+
+Instead of changing security settings, I ran Python directly:
+
+.\.venv\Scripts\python.exe python\environment_check.py
+
+### What I learned
+- Creating and activating a virtual environment are different.
+- A virtual environment can run Python without being activated.
+- PowerShell execution policies are separate from Python.
+- Explicitly selecting the interpreter helps avoid environment confusion.
+
+### Verification
+Record the actual Python version, executable path, and test result
+from environment_check.py.
