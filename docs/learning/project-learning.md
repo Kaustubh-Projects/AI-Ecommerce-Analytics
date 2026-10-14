@@ -381,3 +381,103 @@ Instead of changing security settings, I ran Python directly:
 ### Verification
 Record the actual Python version, executable path, and test result
 from environment_check.py.
+
+## First Data Inspection Milestone
+
+### Dataset
+- Source: Brazilian E-Commerce Public Dataset by Olist, downloaded from Kaggle.
+- Local directory: `data/raw/`
+- Files discovered: 9 CSV files.
+- Total records across the nine files: 1,758,922.
+- The total includes geolocation records and is not the number of orders.
+
+### Implementation
+Created `python/inspect_dataset.py` as a reusable dataset inspection tool.
+
+The script:
+- Locates the project and raw-data directories using `pathlib`.
+- Discovers CSV files and displays their row counts, column counts, and headers.
+- Checks required columns in the orders dataset.
+- Counts blank values in selected required fields.
+- Counts repeated nonblank order IDs.
+- Displays the order-status distribution.
+- Reads source files without modifying them.
+
+### Concepts learned
+
+**CSV and headers:** CSV files store tabular data. The first row commonly contains column names.
+
+**Table grain:** The grain defines what one row represents. An orders row represents an order, while an order-items row represents an item within an order.
+
+**Primary key:** A column or combination of columns intended to uniquely identify each record.
+
+**Foreign key:** A field that references a record in another table and helps establish relationships.
+
+**Data quality:** Data validation includes checking identifiers, missing values, required columns, and business rules.
+
+**Business context:** A blank value is not automatically an error. For example, a delivery timestamp may be blank for an order that was never delivered.
+
+### Initial findings
+
+- Orders dataset: 99,441 rows.
+- Unique nonblank order IDs: 99,441.
+- Order IDs appearing more than once: 0.
+- Blank values in the four required fields checked: 0.
+- Delivered orders: 96,478 (approximately 97.02%).
+- The checks above apply only to the fields and identifiers examined by the script; they do not prove that every dataset is free of data-quality issues.
+
+### Design decision
+
+Keep `inspect_dataset.py` focused on inspecting raw CSV files and performing basic checks. More advanced transformations, database loading, and analytics will be implemented in separate components.
+
+### Next step
+Install Pandas in the project's virtual environment and use it to explore the dataset through a separate analysis script.
+
+## Day 1 — Initial Dataset Exploration (14 October 2026)
+
+### Objective
+Explore the Olist Brazilian E-Commerce dataset using Python and Pandas before starting data cleaning and database development.
+
+### Files Used
+- `python/inspect_dataset.py` — inspects CSV files and performs basic data-quality checks.
+- `python/analyze_orders.ipynb` — interactively explores the orders dataset using Pandas.
+- `python/analyze_orders.py` — retained for now; no new analysis implementation was added to this file.
+
+### Work Completed
+1. Loaded `olist_orders_dataset.csv` into a Pandas DataFrame.
+2. Examined dataset dimensions, the first five rows, column names, data types and missing values.
+3. Analysed order-status counts and percentage distribution.
+4. Investigated missing customer delivery timestamps by order status.
+
+### Initial Findings
+- Orders dataset: 99,441 rows and 8 columns.
+- All eight columns were initially read as strings.
+- `order_approved_at`: 160 missing values.
+- `order_delivered_carrier_date`: 1,783 missing values.
+- `order_delivered_customer_date`: 2,965 missing values.
+- Order statuses: delivered 96,478; shipped 1,107; canceled 625; unavailable 609; invoiced 314; processing 301; created 5; approved 2.
+- Eight orders marked `delivered` have a missing customer delivery timestamp.
+- Among these eight records, seven have a carrier timestamp and one does not.
+
+### Concepts Learned
+- Pandas DataFrames and CSV loading.
+- `shape`, `head()` and `info()`.
+- Missing-value analysis with `isnull().sum()`.
+- Frequency analysis with `value_counts()`.
+- Filtering with multiple conditions.
+- Grouping records with `groupby()`.
+
+### Decisions and Cautions
+- The original CSV files were not modified.
+- Missing values will not be automatically deleted or filled.
+- Records with missing delivery timestamps require appropriate handling in analyses that depend on actual delivery dates.
+- Timestamp columns need conversion to datetime types in a later analysis step.
+
+### Next Steps
+- Convert timestamp columns to datetime types.
+- Investigate date consistency and missing-value patterns.
+- Inspect relationships among the nine source CSV files.
+- Continue toward PostgreSQL ingestion and analytical transformations.
+
+### Milestone Status
+Initial exploratory analysis completed. Data cleaning, PostgreSQL ingestion, dashboards, API development and machine learning remain future tasks.
