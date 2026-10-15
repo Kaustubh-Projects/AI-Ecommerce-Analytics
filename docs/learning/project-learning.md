@@ -481,3 +481,111 @@ Explore the Olist Brazilian E-Commerce dataset using Python and Pandas before st
 
 ### Milestone Status
 Initial exploratory analysis completed. Data cleaning, PostgreSQL ingestion, dashboards, API development and machine learning remain future tasks.
+
+## Day 2 — Data Quality and Relationship Analysis (15 October 2026)
+
+### Objective
+
+Inspect all nine Olist CSV datasets, investigate date and data-quality issues, and identify how the datasets may relate before designing the PostgreSQL schema.
+
+### Work Completed
+
+1. Inspected the nine CSV datasets and reviewed their sizes and columns.
+2. Converted order timestamp columns to datetime values in the notebook and checked for conversion failures.
+3. Investigated missing delivery timestamps and date-sequence anomalies.
+4. Checked customer, order-item, product, seller, and payment identifier matching.
+5. Investigated an order without a payment record across related datasets.
+6. Checked review identifiers and order relationships.
+7. Checked product-category translation coverage.
+8. Investigated ZIP-prefix matching and coordinate duplication in geolocation.
+
+### Key Findings
+
+#### Dataset relationships
+
+- Customer IDs in the orders dataset matched records in the customers dataset.
+- All order IDs in the order-items dataset matched existing orders.
+- 775 orders had no order-item records. Most were unavailable or canceled, but the remaining statuses require investigation rather than assumptions.
+- Product IDs and seller IDs referenced by order items matched the products and sellers datasets.
+- All payment order IDs matched existing orders, but one order had no payment record.
+- All review order IDs matched existing orders.
+- Product category translation keys were unique in the translation dataset.
+
+#### Payment investigation
+
+Order `bfbd0f9bdef84302105ad712db648a6c` was marked delivered but had no matching payment record. It had three order-item rows and one review with a score of 1. The review reported that the customer had not received the product.
+
+This is a discrepancy requiring investigation. The available data does not establish why the payment record is missing or whether the recorded delivery status is correct.
+
+#### Reviews
+
+- Total review rows: 99,224.
+- Unique review IDs: 98,410.
+- Distinct review IDs appearing more than once: 789.
+- Rows belonging to repeated review IDs: 1,603.
+- Exact duplicate rows across all columns: 0.
+- Unique order IDs represented in reviews: 98,673.
+- Orders with multiple review rows: 547.
+- Review rows referencing nonexistent orders: 0.
+
+The review ID should not be assumed to be unique without further investigation. The appropriate key and row grain must be decided before database constraints are designed.
+
+#### Product categories
+
+- Translation dataset: 71 rows and 71 unique source category names.
+- Two product categories had no matching translation: `pc_gamer` and `portateis_cozinha_e_preparadores_de_alimentos`.
+- 610 products had missing category names.
+
+Original category values should be preserved. Missing or untranslated categories should not be assigned invented values.
+
+#### Geolocation
+
+- Geolocation dataset: 1,000,163 rows.
+- Unique ZIP prefixes: 19,015.
+- ZIP-prefix rows beyond the first occurrence: 981,148.
+- ZIP prefixes with multiple distinct coordinate pairs: 17,781.
+- Maximum distinct coordinate pairs for one ZIP prefix: 746.
+- Distinct customer ZIP prefixes without a geolocation match: 157.
+- Distinct seller ZIP prefixes without a geolocation match: 7.
+
+ZIP prefixes are not unique geolocation keys. Directly joining the raw geolocation dataset may multiply customer or seller rows and distort analytical results. A safe approach must be determined before using geolocation in reporting.
+
+#### Date and delivery checks
+
+- No invalid date values were identified during the timestamp-conversion checks.
+- Several date-sequence anomalies were found, including carrier timestamps preceding purchase timestamps and customer delivery timestamps preceding carrier timestamps.
+- Delivery-performance results, using calendar dates when both actual and estimated delivery dates were available:
+  - Early: 88,649 orders.
+  - Same calendar date: 1,292 orders.
+  - Late: 6,535 orders.
+  - Total with both dates available: 96,476 orders.
+
+These results depend on the stated date-comparison method. Anomalies should be investigated before correction.
+
+### Concepts Learned
+
+- Candidate relationships can be identified from column names and business meaning, then verified with matching and uniqueness checks.
+- A primary key must uniquely identify a record at the intended table grain.
+- Foreign-key compatibility requires checking unmatched values, missing values, and cardinality.
+- One-to-many joins can multiply rows when the join key is not unique on the expected side.
+- Missing values, repeated identifiers, and conflicting business records require investigation rather than automatic deletion.
+- A dataset's row count does not necessarily represent the number of distinct business entities.
+
+### Decisions and Cautions
+
+- The raw CSV files remain the source data and should not be modified during exploration.
+- Findings are recorded as investigation items; they do not automatically establish the cause of an anomaly.
+- The nine identified connections are candidate relationships, not yet a final set of database foreign-key constraints.
+- PostgreSQL schema design will follow the relationship analysis.
+- `analyze_orders.ipynb` remains the interactive analysis workspace. `analyze_orders.py` is retained for now and should not be expanded merely to duplicate the notebook.
+
+### Next Steps
+
+- Finish documenting and reviewing the relationship findings.
+- Review and commit the intended Day 2 changes.
+- Design the PostgreSQL schema based on the verified data grain and relationships.
+- Begin database creation and Python connectivity after the schema design is agreed.
+
+### Milestone Status
+
+Initial dataset inspection, date checks, and major candidate-relationship investigations completed. PostgreSQL schema design, ingestion, transformations, dashboards, API development, and machine learning remain future work.
