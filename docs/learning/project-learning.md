@@ -589,3 +589,173 @@ These results depend on the stated date-comparison method. Anomalies should be i
 ### Milestone Status
 
 Initial dataset inspection, date checks, and major candidate-relationship investigations completed. PostgreSQL schema design, ingestion, transformations, dashboards, API development, and machine learning remain future work.
+
+
+## Day 3 — PostgreSQL Schema Design and Bronze Ingestion
+
+### Goal
+Create the PostgreSQL database structure, connect Python to PostgreSQL, load all nine historical Olist CSV files into the Bronze layer, and verify the results.
+
+### 1. Doubt: How Should We Organize the Database?
+
+Should the project use one PostgreSQL database with three schemas, one schema with table-name prefixes, or separate databases for Bronze, Silver, and Gold?
+
+### Solution
+Selected one PostgreSQL database named `ecommerce_analytics` with three schemas:
+
+- `bronze`
+- `silver`
+- `gold`
+
+### Why We Use This Structure
+- Bronze preserves ingested source data.
+- Silver will contain validated, cleaned, and standardized data.
+- Gold will contain business-ready analytical tables and metrics.
+- One database simplifies querying and integration with Python and Power BI.
+- Separate schemas organize the layers and make the architecture easier to understand.
+
+### Alternatives Considered
+- Table prefixes: simple to start, but less convenient for organizing a growing number of tables and permissions.
+- Separate databases: useful when stronger operational separation is required, but adds complexity for this portfolio project.
+
+### Important Learning
+A PostgreSQL schema is a namespace inside a database. It organizes database objects but does not automatically enforce data quality or make transformations safe.
+
+### 2. Doubt: How Should the Bronze Layer Preserve Source Data?
+
+How can we preserve source values, missing values, and duplicate rows while adding enough metadata to trace ingestion?
+
+### Solution
+Created nine source tables in the `bronze` schema, one for each CSV file.
+
+Each source table has:
+- `bronze_row_id`: generated technical primary key.
+- Original CSV columns, retaining their original names.
+- Source columns stored as `TEXT` and allowed to contain `NULL`.
+- `source_file`: identifies the source CSV.
+- `ingested_at`: records the ingestion timestamp.
+
+The source tables do not enforce foreign keys or automatically remove duplicate source records.
+
+### Why We Use This Design
+- A technical key identifies a stored row independently of the source business key.
+- Text columns preserve the original source representation until validation and type conversion happen in Silver.
+- Nullable source columns preserve missing information rather than inventing replacement values.
+- Source metadata improves traceability.
+- Keeping Bronze separate from Silver allows us to reprocess data without losing the original source layer.
+
+### 3. Doubt: How Should We Track CSV Ingestion Attempts?
+
+How can we prevent accidental duplicate loads and retain a record of failed attempts?
+
+### Solution
+Created `bronze.ingestion_batches` with eight columns:
+
+- `batch_id`
+- `source_file`
+- `file_hash`
+- `status`
+- `started_at`
+- `completed_at`
+- `row_count`
+- `error_message`
+
+The status is restricted to `in_progress`, `completed`, or `failed`.
+
+The Python script calculates a SHA-256 fingerprint for each file. If identical content has already loaded successfully, the script skips it. If a previously loaded filename has changed content, the script stops and requires controlled reprocessing rather than silently appending another copy.
+
+### Why We Use This Design
+- The fingerprint helps identify identical file contents.
+- The batch table preserves the history of ingestion attempts.
+- Status and error details make failures easier to investigate.
+- Each CSV is processed in its own transaction.
+- A failed file load rolls back that file's inserted rows without undoing previously committed files.
+
+### 4. Python and PostgreSQL Connection
+
+Installed the following packages in the project virtual environment:
+
+- Pandas 3.0.6
+- SQLAlchemy 2.1.4
+- Psycopg 3.3.6
+- python-dotenv 1.2.4
+
+Created `python/test_db_connection.py` to verify that Python could connect to `ecommerce_analytics`.
+
+Database credentials are stored in the local `.env` file, which is excluded from Git through `.gitignore`. Credentials must not be committed to GitHub.
+
+### 5. Python CSV Ingestion
+
+Created `python/ingest_bronze.py`.
+
+The script:
+- Maps each CSV filename to its corresponding Bronze table.
+- Calculates a SHA-256 fingerprint.
+- Reads CSV files in chunks to limit memory usage.
+- Preserves source column names and text values.
+- Adds the `source_file` metadata column.
+- Relies on PostgreSQL to generate `bronze_row_id` and `ingested_at`.
+- Records batch outcomes and row counts.
+- Skips previously successful identical files.
+- Rolls back a failed file transaction and records the error.
+
+### 6. Error Encountered and Solution
+
+The first customer ingestion attempt failed because `bronze.customers.source_file` is required but the Python script did not supply it.
+
+Error:
+`NotNullViolation: null value in column "source_file" violates not-null constraint`
+
+Solution:
+Added the source filename to each Pandas chunk before inserting it:
+
+`chunk["source_file"] = file_name`
+
+The failed attempt remained in the ingestion history. The next attempt succeeded with 99,441 rows.
+
+This demonstrated the importance of aligning Python inserts with database constraints and retaining failed-attempt history for troubleshooting.
+
+### 7. Ingestion Results
+
+All nine CSV files loaded successfully.
+
+| Bronze table | Rows loaded |
+|---|---:|
+| `bronze.customers` | 99,441 |
+| `bronze.geolocation` | 1,000,163 |
+| `bronze.order_items` | 112,650 |
+| `bronze.order_payments` | 103,886 |
+| `bronze.order_reviews` | 99,224 |
+| `bronze.orders` | 99,441 |
+| `bronze.products` | 32,951 |
+| `bronze.sellers` | 3,095 |
+| `bronze.category_translation` | 71 |
+| **Total** | **1,758,922** |
+
+The total includes geolocation records and is not the total number of orders.
+
+### 8. Verification
+
+Verified in pgAdmin that:
+- All nine source tables contain the expected row counts.
+- All nine files have successful ingestion records.
+- Successful batches have recorded row counts and completion timestamps.
+- Successful batches have `NULL` error messages.
+- The original failed customer attempt and successful retry are both retained.
+
+These checks confirm row counts and ingestion status. They do not yet prove that every source value is correct or that all relationships are valid.
+
+### Important Learning
+- Database metadata can be inspected through `information_schema.columns`.
+- Actual records are queried from their application tables, such as `bronze.ingestion_batches`.
+- A successful database connection does not guarantee a successful insert; database constraints must also be satisfied.
+- Row counts verify ingestion volume but are not a complete data-quality test.
+- Bronze preserves the ingested source representation. Validation, type conversion, relationship checks, and cleaning belong in Silver.
+
+### Current Status
+**Completed:** PostgreSQL database and schemas, Bronze tables, Python connection test, CSV ingestion script, and ingestion verification.
+
+**Not yet implemented:** Silver transformations, Gold analytical tables, automated data-quality checks, Power BI dashboards, ML models, API ingestion, and deployment.
+
+### Next Step
+Begin the Silver layer by defining data types, key constraints, validation rules, duplicate-handling policies, and relationship checks before implementing transformations.
