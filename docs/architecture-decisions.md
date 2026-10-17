@@ -200,7 +200,7 @@ Identical file contents that have previously loaded successfully are skipped. Ch
 - [x] CSV ingestion script implemented.
 - [x] All nine historical CSV files loaded.
 - [x] Row counts and batch outcomes verified.
-- [ ] Silver schema transformations and data-quality rules implemented.
+- [x] Silver schema transformations and initial validation checks implemented.
 - [ ] Gold analytical tables implemented.
 
 ### Limitations and Follow-up
@@ -209,3 +209,77 @@ Identical file contents that have previously loaded successfully are skipped. Ch
 - Controlled reprocessing must be implemented and tested before changed files can be safely reloaded.
 - The current ingestion process loads local historical CSVs; it does not yet provide scheduled ingestion, live event ingestion, or API ingestion.
 - Bronze tables preserve source values as text. Downstream layers must convert dates and numeric values using explicit validation rules.
+
+## Day 4 — Silver Layer Decisions
+
+### ADR: Silver Layer Table Design and Transformations
+
+**Status:** Implemented
+
+**Context:** Bronze contains the source CSV data with source columns stored as text. Analytics requires standardized data types, validated identifiers, and dependable relationships.
+
+**Decision:** Use PostgreSQL SQL for transformations that are naturally performed inside the database. Use Python when it provides a clear advantage for ingestion, complex data processing, machine learning, NLP, forecasting, or orchestration. Do not duplicate transformations merely to demonstrate both tools.
+
+**Rationale:** This keeps the architecture practical, avoids unnecessary data movement, and assigns each technology a responsibility based on the task.
+
+### ADR: Silver Processing Metadata
+
+**Status:** Implemented
+
+**Decision:** Preserve `source_file` and `ingested_at` in Silver and include `silver_processed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`.
+
+**Rationale:** Source metadata supports lineage and troubleshooting. The processing timestamp distinguishes Bronze ingestion time from Silver processing time.
+
+### ADR: Primary Keys and Foreign Keys
+
+**Status:** Implemented for the relationships listed below.
+
+**Decision:** Use primary keys to enforce record identity and foreign keys to enforce validated relationships.
+
+Implemented relationships:
+
+- `silver.orders.customer_id` → `silver.customers.customer_id`
+- `silver.order_items.order_id` → `silver.orders.order_id`
+- `silver.order_items.product_id` → `silver.products.product_id`
+- `silver.order_items.seller_id` → `silver.sellers.seller_id`
+- `silver.order_payments.order_id` → `silver.orders.order_id`
+- `silver.order_reviews.order_id` → `silver.orders.order_id`
+
+**Rationale:** Validate relationships before adding constraints. The foreign key belongs to the referencing table, not the referenced table.
+
+### ADR: Composite and Generated Primary Keys
+
+**Status:** Implemented
+
+**Decision:**
+
+- `silver.order_items` uses `(order_id, order_item_id)` as its composite primary key.
+- `silver.order_payments` uses `(order_id, payment_sequential)` as its composite primary key.
+- `silver.order_reviews` uses a generated identity key because source `review_id` values repeat.
+- `silver.geolocation` uses a generated identity key because ZIP prefixes repeat.
+
+**Rationale:** Source identifiers must not be assumed unique without evidence. Keys should represent actual row identity and preserve legitimate source records.
+
+### ADR: Missing Values and Source Preservation
+
+**Status:** Implemented as the initial Silver policy
+
+**Decision:** Preserve missing source values unless a documented cleaning rule justifies changing them. Convert blank strings to SQL `NULL` during relevant date and numeric transformations. Do not invent missing categories or timestamps.
+
+**Rationale:** Missing values may be legitimate, and unexplained replacement or deletion could distort analytics.
+
+### ADR: Validation and Evidence
+
+**Status:** Adopted
+
+**Decision:** Distinguish source inspection, Bronze validation, and Silver validation. Every expected result must be supported by a prior observation, a database constraint, or an explicit business rule.
+
+**Rationale:** A successful insertion is not proof of data quality. Validation must verify the transformed result, and documentation must not claim checks that were not performed.
+
+### Known Limitations and Follow-Up
+
+- Some source categories lack English translations.
+- Geolocation ZIP prefixes are not unique and must not be used as unique join keys without a defined aggregation or lookup strategy.
+- Repeated review IDs must not be removed without investigating their meaning.
+- Future pipeline reruns must be designed to avoid duplicate inserts.
+- Gold-layer modeling and downstream business rules remain to be implemented.
