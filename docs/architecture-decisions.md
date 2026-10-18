@@ -283,3 +283,186 @@ Implemented relationships:
 - Repeated review IDs must not be removed without investigating their meaning.
 - Future pipeline reruns must be designed to avoid duplicate inserts.
 - Gold-layer modeling and downstream business rules remain to be implemented.
+
+## ADR-006: Gold Layer Uses Fact and Dimension Tables
+
+**Status:** Implemented; initial load and selected validations verified
+
+**Context**
+
+The Silver layer contains cleaned, typed, source-oriented tables. Business analysis requires related data to be organized around orders, order items, customers, products, sellers, dates, payments, and reviews.
+
+**Decision**
+
+Create four dimension tables and four fact tables in the PostgreSQL `gold` schema.
+
+**Dimension tables**
+- `gold.dim_customers` — customer attributes
+- `gold.dim_products` — product attributes and English category translation where available
+- `gold.dim_sellers` — seller attributes
+- `gold.dim_date` — calendar attributes and integer `YYYYMMDD` date keys
+
+**Fact tables**
+- `gold.fact_orders` — one row per order
+- `gold.fact_order_items` — one row per `(order_id, order_item_id)`
+- `gold.fact_payments` — one row per `(order_id, payment_sequential)`
+- `gold.fact_reviews` — one row per Silver review record, identified by `silver_review_row_id`
+
+**Rationale**
+
+The fact/dimension model makes business analysis easier to understand and supports reusable reporting in SQL and Power BI. Gold does not need to change every source value; it organizes, enriches, and derives information where needed.
+
+**Validation evidence**
+
+The initial Gold row counts matched their corresponding Silver source counts. Relationship and selected metric validations also passed. This verifies the initial load at the tested level, not every possible business rule.
+
+---
+
+## ADR-007: Define Revenue and Delivery Metrics Explicitly
+
+**Status:** Implemented; selected metric validations verified
+
+**Context**
+
+Revenue and delivery results can be misleading if different queries use different definitions or combine records at incompatible levels of detail.
+
+**Decision**
+
+- Item revenue is calculated from item `price`.
+- `freight_value` is reported separately.
+- Realized sales analysis includes orders whose status is `delivered`.
+- Delivery duration is calculated as the calendar-date difference between order purchase and customer delivery dates when both dates are available.
+- Delivery outcome is `early`, `on_time`, `late`, or `unknown`, based on actual and estimated delivery calendar dates.
+- Missing dates are not fabricated.
+
+**Rationale**
+
+Explicit definitions make results consistent and easier to validate. Calendar-day delivery duration is intentional; it is not elapsed-hour duration.
+
+**Validation evidence**
+
+The sales, product, and seller view item-revenue totals reconciled to the direct delivered-order item-price total. No negative delivery durations were found in the validation run. Orders with unknown delivery outcomes remain present for investigation.
+
+---
+
+## ADR-008: Customer RFM Uses Delivered Purchases
+
+**Status:** Implemented; selected metric validations verified
+
+**Context**
+
+Customer segmentation needs consistent measures of purchase recency, frequency, and monetary value.
+
+**Decision**
+
+The `gold.vw_customer_rfm` view groups by `customer_unique_id` and uses delivered purchases only.
+
+- **Recency:** calendar days since the customer's latest delivered purchase, using the day after the latest dataset purchase date as the historical reference date.
+- **Frequency:** count of distinct delivered orders.
+- **Monetary:** sum of item prices from delivered orders, excluding freight.
+- Quintile scores are calculated with PostgreSQL `NTILE(5)`.
+- The recency score sorts by `recency_days ASC`, so more recent customers receive higher recency buckets.
+
+**Rationale**
+
+These rules give the project a consistent historical RFM definition. The reference date is dataset-based, not the current date, so this view describes historical customer behavior.
+
+**Validation evidence**
+
+The RFM customer count matched the distinct customer identities with delivered purchases. The RFM monetary total reconciled to delivered item revenue.
+
+**Limitation**
+
+The segment labels and score thresholds are project-defined rules and should not be interpreted as a universal RFM standard.
+
+---
+
+## ADR-009: Review Satisfaction and Repurchase Are Proxies
+
+**Status:** Implemented; deeper business validation still required
+
+**Context**
+
+The business wants to understand satisfaction and whether customers later buy the same product again. Olist reviews refer to orders, and one order can contain multiple products.
+
+**Decision**
+
+- Review scores 4–5 are classified as `satisfied`.
+- Score 3 is classified as `neutral`.
+- Scores 1–2 are classified as `dissatisfied`.
+- The `gold.vw_customer_satisfaction_repurchase` view associates an order review with each distinct product in that order for exploratory analysis.
+- A repeat purchase requires a later delivered order containing the same product for the same `customer_unique_id`.
+- Review/product associations are deduplicated before calculating customer-product review summaries.
+
+**Rationale**
+
+This provides an initial way to explore satisfaction-associated repurchase behavior using the available data.
+
+**Limitations**
+
+An order-level review is not proof of a product-specific rating. A customer may have bought multiple products in the reviewed order. Also, no later repurchase observed in the historical dataset does not prove that the customer will never return.
+
+**Validation evidence**
+
+The review satisfaction classification check passed. The view returned customer-product pairs, but its row count alone does not prove every repurchase classification is correct. Further business-rule testing is required before using this view as definitive product-level satisfaction reporting.
+
+---
+
+## ADR-010: Gold Analytical Views Provide Reusable Business Queries
+
+**Status:** Implemented; view existence and row counts verified
+
+**Context**
+
+Repeatedly writing complex joins and aggregations for each report increases duplication and the risk of inconsistent definitions.
+
+**Decision**
+
+Create six standard PostgreSQL views:
+
+1. `gold.vw_sales_performance`
+2. `gold.vw_delivery_performance`
+3. `gold.vw_customer_rfm`
+4. `gold.vw_product_performance`
+5. `gold.vw_seller_performance`
+6. `gold.vw_customer_satisfaction_repurchase`
+
+**Rationale**
+
+The views provide reusable business-oriented queries for SQL analysis and the future Power BI layer. Standard PostgreSQL views store query definitions, not separate copies of the result rows.
+
+**Validation evidence**
+
+All six views were confirmed in the PostgreSQL catalog and returned rows. Selected sales, product, seller, and RFM monetary totals reconciled to the direct delivered-order item-price calculation.
+
+---
+
+## ADR-011: Validate Gold Before Reporting
+
+**Status:** Implemented; initial validation run completed
+
+**Context**
+
+Successful SQL execution and matching row counts alone do not prove that data relationships and business metrics are correct.
+
+**Decision**
+
+Use a read-only validation script at `sql/12_validate_gold_completely.sql` to check row counts, date coverage, missing date keys, orphan relationships, satisfaction classifications, delivery durations, view counts, and selected metric reconciliations. Informational checks report known source-data limitations separately from failures.
+
+**Rationale**
+
+Separating validation from data loading helps detect errors without modifying the dataset and provides evidence for the project's learning journal.
+
+**Validation evidence**
+
+The initial run reported checks 1–28 as passing. Informational findings included:
+- 13 products with a non-null category lacking an English translation match
+- 2,965 orders with unknown delivery outcome
+- 0 reviews with missing score
+- 125 sellers with no delivered sales
+
+These findings describe the current dataset and query definitions; they are not automatically loading failures.
+
+**Limitation**
+
+Passing these checks does not prove every possible business rule is correct. Satisfaction/repurchase logic still requires deeper validation, and the hard-coded expectation of 774 date rows is specific to the current dataset.

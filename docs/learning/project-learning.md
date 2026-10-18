@@ -1084,3 +1084,512 @@ For every significant step, record:
 9. Remaining limitations and next action.
 
 Never claim a command ran, a check passed, or a file was updated without evidence.
+
+# Day 5 — Gold Layer Design, Implementation, and Validation
+
+**Project:** AI-Powered E-Commerce Analytics
+**Date:** 18 October 2026
+**Working directory:** `C:\Users\Lenovo\Documents\AI-Ecommerce-Analytics
+**Database:** `ecommerce_analytics`
+**Main objective:** Design and implement a business-oriented Gold layer on top of the validated Silver layer, create analytical views, validate key metrics, and record the reasoning behind the decisions.
+
+> Documentation rule: this journal records what was actually discussed, implemented, and observed during Day 5. It distinguishes verified results from design intentions and known limitations. The SQL files were saved and executed by the project owner in VS Code/pgAdmin; this document does not claim that the assistant edited the local repository directly.
+
+---
+
+## 1. Starting point and objective
+
+At the start of Day 5:
+
+- Bronze ingestion was complete for all nine historical Olist CSV files.
+- Silver tables had been created, populated, and validated on Day 4.
+- The `gold` schema already existed, but Gold tables and analytical views had not yet been implemented.
+- The goal was to create an analytics-ready model suitable for SQL analysis and later Power BI reporting.
+- The business scope had already been discussed and approved.
+
+The goal was not to copy Silver data into another schema without a reason. Gold was intended to organize cleaned records into facts and dimensions, add derived/enriched attributes where useful, and expose reusable business queries through views.
+
+## 2. Approved business questions and rules
+
+The following scope and decisions were approved before Gold SQL implementation.
+
+### 2.1 Business analysis scope
+
+1. Sales/revenue by date, month, product category, customer location, and seller.
+2. Order and delivery analysis: order status, delivery duration, early/on-time/late outcomes.
+3. Customer analysis: repeat customers, purchase patterns, and RFM.
+4. Product performance.
+5. Seller performance.
+6. Review satisfaction and subsequent same-product repurchase.
+
+The user also specifically wanted to answer:
+
+> How many customers are satisfied with a product and continue buying it, and how many try it once and do not return?
+
+This question needs careful interpretation. The dataset's review belongs to an order, not a specific individual product. For a multi-product order, associating the order review with each product is an exploratory proxy, not proof that the customer gave each product an individual rating. A lack of later repurchase in a finite historical dataset does not prove that the customer will never return.
+
+### 2.2 Approved business rules
+
+- **Review satisfaction:** score 4–5 = `satisfied`; score 3 = `neutral`; score 1–2 = `dissatisfied`.
+- **Revenue:** item `price` is item revenue; `freight_value` is reported separately. Do not add freight into the item-revenue metric.
+- **Realized revenue:** use delivered orders only. Keep other statuses available for operational analysis, but exclude them from realized revenue.
+- **Repeat purchase:** a later delivered order for the same customer and same product counts as a repeat purchase.
+- **RFM reference date:** the day after the latest valid purchase date in the historical dataset.
+- **RFM monetary value:** sum item prices from delivered orders; exclude freight.
+- **Gold implementation:** core fact/dimension tables plus analytical views.
+
+## 3. What was learned about Silver versus Gold
+
+A key doubt during Day 5 was:
+
+> If we transform Bronze into Silver, but the values copied from Silver to Gold may stay the same, why do we need Gold? Are we just loading the same data again?
+
+Resolution:
+
+- **Bronze** preserves source data as ingested, mostly with source values stored as text and ingestion metadata.
+- **Silver** cleans and standardizes the data, converts types, applies keys/constraints, and maintains detailed source-oriented records.
+- **Gold** organizes data around analytical/business concepts, using facts and dimensions, and derives useful fields or enriches records when required.
+- Not every Gold column must change. Reusing a cleaned price or product identifier is intentional when that value is still needed.
+- Gold is not required to alter every source value simply to be different.
+- Gold tables may use a different grain, different set of columns, additional relationships, and derived attributes.
+- Gold views calculate reusable business summaries from Gold tables.
+
+### Example used to explain the concept
+
+For `gold.fact_order_items`, source item details come from `silver.order_items`, while customer and purchase-date information are obtained by joining `silver.orders` on `order_id`. `purchase_date_key` is derived from the purchase date, and `item_quantity` is set to 1 because each source row represents one order-item line.
+
+General pattern:
+
+```sql
+INSERT INTO gold.target_table (target_columns...)
+SELECT source_columns_and_calculations...
+FROM silver.source_table AS s
+JOIN silver.other_source AS o
+  ON s.join_key = o.join_key;
+```
+
+The `INSERT INTO` defines the Gold destination, `SELECT` defines the values to populate it, and `JOIN` combines related Silver entities where needed.
+
+### Example business question
+
+“Which product categories generated the most revenue from delivered orders?”
+
+Silver has separate order, order-item, and product tables. A query joins them, filters to delivered orders, groups by category, and sums item prices. Gold has facts and dimensions organized for that analysis, and the same business question can be answered from the Gold fact/dimension model. The result should be equivalent when both queries apply the same business rules and correct joins.
+
+Important learning: **Gold's value is its analytical organization, consistent business definitions, enrichment, and reusable reporting layer—not necessarily a change to every original value.**
+
+## 4. Gold data model designed and implemented
+
+Eight Gold tables were created: four dimensions and four fact tables.
+
+### 4.1 Dimensions
+
+| Table | Grain / purpose | Main fields and decisions |
+|---|---|---|
+| `gold.dim_customers` | One row per `customer_id` | `customer_id`, `customer_unique_id`, ZIP prefix, city, state |
+| `gold.dim_products` | One row per `product_id` | Category, English category translation, product descriptive fields, photos, weight, dimensions |
+| `gold.dim_sellers` | One row per `seller_id` | Seller ZIP prefix, city, state |
+| `gold.dim_date` | One row per calendar date | Integer `date_key` formatted as YYYYMMDD, date, year, quarter, month number/name, day of month, ISO day of week |
+
+`dim_products` uses a `LEFT JOIN` to category translation so products are retained even when the translation table has no matching English category.
+
+`dim_date` is generated for every calendar day between the earliest and latest non-null order purchase dates. It contains 774 rows in the current dataset.
+
+### 4.2 Facts
+
+| Table | Grain / purpose | Main decisions |
+|---|---|---|
+| `gold.fact_orders` | One row per order | Order status, customer, purchase date key, order timestamps, delivery duration and outcome |
+| `gold.fact_order_items` | One row per `(order_id, order_item_id)` | Product, seller, customer, purchase date key, price, freight, quantity |
+| `gold.fact_payments` | One row per `(order_id, payment_sequential)` | Payment type, installments, payment value |
+| `gold.fact_reviews` | One row per Silver review record | Uses `silver_review_row_id` as row identity because source `review_id` is not guaranteed unique; includes order/customer, score, satisfaction category, review timestamps |
+
+### 4.3 Important data-type correction
+
+During creation of `sql/05_create_gold_tables.sql`, the `order_item_id` type was corrected to match Silver:
+
+```sql
+order_item_id TEXT NOT NULL
+```
+
+The verified local output showed:
+
+- Line 128: `order_item_id TEXT NOT NULL`
+- Line 142: `PRIMARY KEY (order_id, order_item_id)`
+
+The composite key was retained. `item_quantity INTEGER NOT NULL DEFAULT 1` and `CHECK (item_quantity = 1)` were intentional because each source row represents one item line.
+
+### 4.4 Relationships and join safety
+
+Gold fact tables reference dimension/fact keys according to the approved model. The item fact obtains its customer from the order. The date dimension is populated before fact rows that reference its date key.
+
+Do not join multiple facts at their raw grains without thinking about multiplication. For example, an order with multiple item rows and multiple payment rows can multiply item and payment amounts if both fact tables are joined directly to each other. Aggregate each fact to the required grain or use the appropriate dimension model before combining measures.
+
+Geolocation ZIP prefixes were not joined into sales facts. In the source, ZIP prefixes are not unique and can map to multiple coordinate pairs; a naïve join can multiply sales rows. A future geolocation analysis needs a defined aggregation/lookup strategy.
+
+## 5. Delivery calculations
+
+`gold.fact_orders.delivery_days` is calculated as the calendar-date difference between delivered-customer date and purchase date, only when both dates are present.
+
+`delivery_outcome` is assigned as follows:
+
+- `early`: delivered calendar date is before the estimated delivery calendar date.
+- `on_time`: actual and estimated delivery calendar dates are equal.
+- `late`: actual delivered calendar date is after the estimate.
+- `unknown`: actual delivery date or estimated delivery date is missing.
+
+These are calendar-day rules, not elapsed-hour calculations. Orders with unknown outcomes are retained; missing dates are not fabricated.
+
+## 6. SQL files created/used during Day 5
+
+The project `sql/` directory contained these files when checked:
+
+```text
+01_create_bronze_tables.sql
+02_create_silver_tables.sql
+03_load_silver_tables.sql
+04_validate_bronze_silver.sql
+05_create_gold_tables.sql
+06_load_gold_tables.sql
+07_create_gold_views.sql
+08_validate_gold.sql
+12_validate_gold_completely.sql
+```
+
+### 6.1 `sql/05_create_gold_tables.sql`
+
+Purpose: create the eight Gold table structures only. It does not insert data.
+
+The user ran the script in pgAdmin and verified the expected eight Gold table names. The script must not be rerun casually against the populated database because it uses `CREATE TABLE` rather than an idempotent migration.
+
+### 6.2 `sql/06_load_gold_tables.sql`
+
+Purpose: populate the four dimensions and four facts from Silver.
+
+Load order:
+
+1. `dim_customers`
+2. `dim_products`
+3. `dim_sellers`
+4. `dim_date`
+5. `fact_orders`
+6. `fact_order_items`
+7. `fact_payments`
+8. `fact_reviews`
+
+Reasons for this order:
+- Dimensions are loaded before facts that reference them.
+- The date dimension is loaded before facts reference `date_key`.
+- Product translation uses a `LEFT JOIN` to preserve untranslated products.
+- Fact rows retain source-level detail while adding customer/date information or derived business fields.
+
+The user checked that all Gold tables were empty before the initial load. The initial load then succeeded according to the row counts shown in pgAdmin.
+
+**Operational caution:** the load script is an initial-load script, not a safe rerunnable incremental load. If a script fails partway through, inspect the error and the state of each table before retrying. Do not blindly run the whole script again against partially populated tables.
+
+### 6.3 `sql/07_create_gold_views.sql`
+
+Purpose: create six reusable analytical views. It was executed in pgAdmin. Initially the catalog query returned no views; a diagnostic query confirmed the Gold tables existed but `gold.vw_sales_performance` was `NULL`. The user then executed the full views script; pgAdmin returned `CREATE VIEW`, and the subsequent catalog check showed all six views.
+
+Views:
+
+1. `gold.vw_sales_performance`
+2. `gold.vw_delivery_performance`
+3. `gold.vw_customer_rfm`
+4. `gold.vw_product_performance`
+5. `gold.vw_seller_performance`
+6. `gold.vw_customer_satisfaction_repurchase`
+
+#### View 1 — Sales performance
+
+Grain: purchase date + product + customer location + seller. It aggregates delivered-order item revenue, freight, item count, and distinct order count.
+
+#### View 2 — Delivery performance
+
+One row per order, including order status, purchase date, actual delivery date, estimated delivery date, delivery duration, and delivery outcome.
+
+#### View 3 — Customer RFM
+
+Groups delivered purchases by `customer_unique_id` and calculates:
+- Recency in calendar days relative to the day after the latest dataset purchase date.
+- Frequency as distinct delivered orders.
+- Monetary as sum of delivered item prices, excluding freight.
+- `NTILE(5)` scores and an RFM segment.
+
+**Scoring correction made during review:** recency score sorts by `recency_days ASC`, because fewer days since purchase is better and should receive a higher score. Frequency and monetary score ordering was retained as implemented. Segment labels in the current view are simple rules based on the sum of the three scores; they are project-defined labels, not a universal standard.
+
+#### View 4 — Product performance
+
+One row per product with delivered-order item count, distinct order count, item revenue, freight revenue, and average item price.
+
+#### View 5 — Seller performance
+
+One row per seller, including delivered item revenue, delivered freight, delivered order count, average delivery days, and late order count.
+
+**Correction made during review:** average delivery days and late order count were restricted to `order_status = 'delivered'` so that seller delivery metrics consistently describe completed deliveries.
+
+#### View 6 — Customer satisfaction and repurchase
+
+One row per reviewed customer-product pair. The view associates each order review with the products in that order, then summarizes average review score and checks whether a later delivered order contains the same product for the same `customer_unique_id`.
+
+**Correction made during review:** a `review_product_pairs` CTE uses `SELECT DISTINCT` on review row, score, order, customer identity, product, and reviewed order date before grouping. This prevents duplicate order/product associations from multiplying the same review within a product pair when the same product appears on multiple item lines in the same order.
+
+**Limitation:** this is order-review-associated product analysis, not a confirmed product-specific rating. A multi-product order review is not evidence that the customer separately rated each product. No later same-product purchase in this historical dataset only means no matching later delivered purchase was observed in the available time window.
+
+### 6.4 Validation scripts
+
+- `sql/08_validate_gold.sql`: used for Gold table/view existence and related validation queries during development.
+- `sql/12_validate_gold_completely.sql`: a comprehensive read-only validation script, created and run during Day 5. It returns a combined result grid with check number, name, actual value, expected value, status, and explanation.
+
+The comprehensive script contains 32 checks:
+1. Customer row count.
+2. Product row count.
+3. Seller row count.
+4. Order fact row count.
+5. Order-item fact row count.
+6. Payment fact row count.
+7. Review fact row count.
+8. Date dimension row count (774 expected for this current dataset).
+9. Date dimension continuity.
+10. Orders missing purchase date key.
+11. Order items missing purchase date key.
+12. Order items without a matching order.
+13. Order items without a matching product.
+14. Order items without a matching seller.
+15. Orders without a matching customer.
+16. Order date keys without a matching date.
+17. Payments without a matching order.
+18. Reviews without a matching order.
+19. Reviews without a matching customer.
+20. Incorrect review satisfaction classifications.
+21. Negative delivery durations.
+22. Delivery view row count.
+23. Sales view item revenue reconciliation.
+24. Product view item revenue reconciliation.
+25. Seller view item revenue reconciliation.
+26. RFM customer count.
+27. RFM monetary total reconciliation.
+28. Satisfaction/repurchase view contains at least one row.
+29. Products without English category translation (informational).
+30. Orders with unknown delivery outcome (informational).
+31. Reviews with missing score (informational).
+32. Sellers with no delivered sales (informational).
+
+The validation query is read-only and does not change Gold data.
+
+## 7. Actual Gold row counts observed
+
+The user shared a pgAdmin result grid after loading Gold. The observed counts were:
+
+| Gold table | Observed rows | Expected / comparison |
+|---|---:|---|
+| `gold.dim_customers` | 99,441 | Matches `silver.customers` |
+| `gold.dim_date` | 774 | Inclusive calendar range |
+| `gold.dim_products` | 32,951 | Matches `silver.products` |
+| `gold.dim_sellers` | 3,095 | Matches `silver.sellers` |
+| `gold.fact_order_items` | 112,650 | Matches `silver.order_items` |
+| `gold.fact_orders` | 99,441 | Matches `silver.orders` |
+| `gold.fact_payments` | 103,886 | Matches `silver.order_payments` |
+| `gold.fact_reviews` | 99,224 | Matches `silver.order_reviews` |
+
+These matching counts support the initial load being complete at the row-count level. Matching counts alone do not prove that every individual value is correct; separate checks are still needed for values and business rules.
+
+## 8. Actual analytical view row counts observed
+
+The user ran a combined `COUNT(*)` query and shared the result grid:
+
+| View | Observed rows | Interpretation |
+|---|---:|---|
+| `vw_customer_rfm` | 93,358 | Unique customers with delivered purchases |
+| `vw_customer_satisfaction_repurchase` | 101,198 | Reviewed customer-product pairs |
+| `vw_delivery_performance` | 99,441 | One row per order |
+| `vw_product_performance` | 32,216 | Products with delivered sales |
+| `vw_sales_performance` | 99,730 | Aggregated date/product/location/seller groups; not order count |
+| `vw_seller_performance` | 3,095 | All sellers, including sellers with no delivered sales |
+
+All six views were confirmed to exist and return data.
+
+## 9. Comprehensive validation results observed
+
+The user reported that checks 1–11 passed and shared a screenshot containing checks 12–32.
+
+### 9.1 Checks reported as passing
+
+The user confirmed checks 1–11 passed. The screenshot showed checks 12–28 passing as well.
+
+- 1–7: Gold dimension/fact row counts match Silver source counts.
+- 8: Date dimension count matches 774.
+- 9: Date dimension continuity passed.
+- 10–11: no missing purchase date keys.
+- 12: zero order items without matching orders.
+- 13: zero order items without matching products.
+- 14: zero order items without matching sellers.
+- 15: zero orders without matching customers.
+- 16: zero non-null order date keys without matching dates.
+- 17: zero payments without matching orders.
+- 18: zero reviews without matching orders.
+- 19: zero reviews without matching customers.
+- 20: zero incorrectly classified review satisfaction categories.
+- 21: zero negative delivery durations.
+- 22: delivery view row count 99,441 equals order fact count.
+- 23: sales view item revenue difference = 0.
+- 24: product view item revenue difference = 0.
+- 25: seller view item revenue difference = 0.
+- 26: RFM customer count 93,358 equals the expected distinct delivered customer count.
+- 27: RFM monetary total difference = 0.
+- 28: satisfaction/repurchase view row count 101,198, satisfying the minimum-data check.
+
+These checks support the initial Gold data load, relationships, classifications, and several important revenue calculations.
+
+### 9.2 Informational findings (not failures)
+
+| Check | Actual result | Interpretation |
+|---|---:|---|
+| 29 — Products without English category translation | 13 | Thirteen products have a non-null category that did not match a translation. Products with missing category names are not counted by this particular predicate. Earlier source exploration found 610 products missing category and related descriptive fields; that is a separate count. |
+| 30 — Orders with unknown delivery outcome | 2,965 | Outcome is unknown when required delivery dates are missing. Earlier source analysis also found missing customer-delivery timestamps, so this result is plausible and should be documented rather than filled with invented dates. |
+| 31 — Reviews with missing review score | 0 | All Gold review scores are present. |
+| 32 — Sellers with no delivered sales | 125 | These sellers are in the seller dimension but have zero delivered-order sales in the current data. This is an analytical finding, not a load failure. |
+
+### 9.3 Sales revenue reconciliation
+
+The user ran a separate query comparing:
+- Direct sum of `gold.fact_order_items.price` joined to delivered orders.
+- Sum of `item_revenue` from `gold.vw_sales_performance`.
+
+The user confirmed the totals matched. The comprehensive validation also showed zero revenue difference for:
+- Sales performance view.
+- Product performance view.
+- Seller performance view.
+- RFM monetary total.
+
+This is an important result because careless fact-to-fact joins can multiply monetary values. The view checks support that these particular revenue totals reconcile to the delivered item-price baseline.
+
+## 10. User doubts, corrections, and explanations during Day 5
+
+| User doubt / concern | Explanation / resolution |
+|---|---|
+| “What is the difference between Silver table and Gold table?” | Silver is cleaned and structured source-oriented detail. Gold is organized around business entities and analysis, often using facts and dimensions. |
+| “In Gold, we didn't change values. Is the same data loaded from Silver?” | Some original values intentionally remain unchanged. Gold can select different columns, join Silver tables, enrich attributes, derive date keys/delivery fields, and provide reusable metrics/views. Not every value must change. |
+| “Show one example of organizing/calculating data for a business question.” | Used product category revenue from delivered orders: join orders, items, products; filter delivered; group by category; sum item prices. |
+| “When a Gold table has a different structure, do values from multiple Silver tables go into it?” | Yes, where the model requires it: `fact_order_items` gets item details from `silver.order_items` and customer/date information from `silver.orders` through a join on `order_id`. Not every Gold table requires multiple Silver sources. |
+| “Should we continue writing SQL scripts?” | Yes. The work proceeded through saved SQL scripts for Gold table creation, loading, views, and validation. |
+| “Give me all queries at once.” | The complete initial load, view creation, and validation scripts were provided together rather than adding one isolated query at a time. |
+| Why did the view-existence query return no rows initially? | The diagnostic confirmed Gold tables existed but `gold.vw_sales_performance` was `NULL`. The complete views script was then executed; pgAdmin returned `CREATE VIEW`, and all six views appeared in the catalog. |
+| Why use `CREATE OR REPLACE VIEW`? | It allows a view definition to be created or updated without recreating underlying Gold tables or reloading data. |
+| Why was the RFM recency sort changed? | Fewer days since last purchase is better. The score ordering was changed to `ORDER BY recency_days ASC` so more recent customers receive higher recency buckets. |
+| Why restrict seller delivery metrics to delivered orders? | To make average delivery duration and late-order metrics consistently describe completed deliveries. |
+| Why deduplicate review/product associations? | Prevent the same review from being counted repeatedly for a customer-product pair if that product appears on multiple item rows in the same order. |
+| Why does a view's row count differ from its source table? | A view's grain can be different. Sales view rows are aggregated groups; RFM groups by customer identity; satisfaction view groups by reviewed customer-product pairs; product view includes only products with delivered sales. |
+| Why are some results informational? | Missing translations, unknown outcomes, and sellers with no delivered sales reflect source coverage/business observations. They should be understood rather than automatically treated as failures. |
+| Why validate revenue after loading? | Successful inserts and matching row counts do not prove measures are correct. Reconciliation checks compare the same business metric at different query paths. |
+
+## 11. Important technical learning from Day 5
+
+### 11.1 Grain matters
+
+“Grain” means what one row represents. Examples:
+- `fact_orders`: one order.
+- `fact_order_items`: one order-item line.
+- `fact_payments`: one payment sequence within an order.
+- `fact_reviews`: one source review row.
+- `dim_products`: one product.
+- `vw_customer_rfm`: one customer identity with delivered purchases.
+- `vw_customer_satisfaction_repurchase`: one reviewed customer-product pair.
+- `vw_sales_performance`: one combination of the grouping fields.
+
+A table or view's row count is meaningful only when its grain is understood.
+
+### 11.2 Facts and dimensions
+
+- **Fact tables** hold measurable events or transactional detail, such as orders, item lines, payments, and reviews.
+- **Dimension tables** hold descriptive entities such as customers, products, sellers, and calendar dates.
+- Facts reference dimensions to enable slicing metrics by customer, product, seller, or date.
+- Dimensions should have stable unique keys appropriate to their grain.
+
+### 11.3 Business metrics need explicit definitions
+
+Revenue can mean different things. In this project:
+- Item revenue = sum of `price`.
+- Freight = sum of `freight_value`, reported separately.
+- Realized revenue analysis filters to delivered orders.
+- RFM monetary = delivered item-price sum.
+- Frequency = distinct delivered orders, not number of item rows.
+- Recency = calendar days from last delivered purchase to the selected historical reference date.
+
+Definitions must be consistent between SQL, views, and future Power BI measures.
+
+### 11.4 Views versus tables
+
+- A table stores rows.
+- A standard PostgreSQL view stores a query definition and calculates its result when queried; it does not store a separate copy of all result rows.
+- `CREATE OR REPLACE VIEW` changes/creates the query definition.
+- Gold tables were populated once; the six views were then created over those tables.
+- The validation SQL is read-only.
+
+### 11.5 A successful script is not full validation
+
+Different evidence is needed for different questions:
+- Table catalog query verifies tables exist.
+- Row counts verify expected quantity at a high level.
+- Foreign-key/orphan checks verify references.
+- Metric reconciliation verifies totals are consistent across query paths.
+- Business-rule checks verify definitions such as review categories.
+- Informational checks reveal source limitations and business observations.
+
+## 12. Day 5 implementation status
+
+### Completed and evidenced
+
+- [x] Gold table creation script executed.
+- [x] Eight Gold tables verified in PostgreSQL.
+- [x] Initial Gold load completed according to observed row counts.
+- [x] All six analytical views created and verified in PostgreSQL.
+- [x] All six views returned rows.
+- [x] Gold table row counts compared with Silver source counts.
+- [x] Relationship/orphan checks passed.
+- [x] Review satisfaction classification check passed.
+- [x] Delivery duration negative-value check passed.
+- [x] Sales, product, seller, and RFM monetary totals reconciled.
+- [x] Informational findings documented.
+- [x] Core doubts about Silver-to-Gold transformation and fact/dimension organization discussed and resolved.
+
+### Still required before calling Gold fully complete
+
+- [ ] Save this complete Day 5 journal into `docs/learning/project-learning.md` (append it to the existing journal; do not replace the previous days).
+- [ ] Review/update `docs/architecture-decisions.md` with the Gold model and business-rule decisions.
+- [ ] Review the saved SQL files and ensure the comprehensive validation script is tracked.
+- [ ] Perform a deeper review of satisfaction/repurchase business logic before treating it as final reporting truth.
+- [ ] Consider whether the hard-coded expected date count of 774 in the validation script should remain as a dataset-specific expectation or be changed to a dynamic validation rule.
+- [ ] Check `git status --short`, inspect the diff, stage only intended files, and commit/push at the agreed checkpoint.
+- [ ] Do not claim the local documentation or GitHub repository has been updated until the user confirms the actual save/commit/push.
+
+## 13. Next steps after Day 5
+
+1. Update and review the project journal and architecture decision log.
+2. Verify all intended SQL files are saved in the local `sql/` folder.
+3. Review Git changes and commit/push the Gold milestone.
+4. Continue with the next project milestone, likely connecting the Gold model and views to Power BI after confirming the intended analytics and metric definitions.
+5. Continue documenting every question, design choice, correction, result, and limitation in the project learning journal.
+
+## 14. Rules for future project work
+
+For every significant step, record:
+1. Goal and reason.
+2. Alternatives considered.
+3. Decision and justification.
+4. SQL/code implemented and saved path.
+5. Expected result and why it is expected.
+6. Actual result and evidence.
+7. User doubts, errors, corrections, and resolutions.
+8. Learning and interview relevance.
+9. Limitations and next action.
+
+Additional workflow rules:
+- Do not assume a file was saved or a script was executed without confirmation.
+- Do not assume a query returned expected rows based only on a success message.
+- Do not claim a check was performed unless its execution/result is known.
+- Explain structural changes before implementing them.
+- Keep SQL queries in version-controlled `sql/` files, not only in pgAdmin history.
+- Do not rerun an initial-load script against populated tables without an explicit reloading plan.
+- Choose SQL or Python based on the task, not merely to demonstrate a technology.
+- Preserve source information unless a justified, documented cleaning rule says otherwise.
