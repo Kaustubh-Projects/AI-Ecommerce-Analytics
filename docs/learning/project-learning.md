@@ -1593,3 +1593,586 @@ Additional workflow rules:
 - Do not rerun an initial-load script against populated tables without an explicit reloading plan.
 - Choose SQL or Python based on the task, not merely to demonstrate a technology.
 - Preserve source information unless a justified, documented cleaning rule says otherwise.
+
+## Day 6 — Power BI Integration and Dashboard Development
+
+### Objective
+Connect Power BI to PostgreSQL and build an initial business analytics report using the Gold analytical views.
+
+### Work Completed
+
+- Connected Power BI Desktop to the local PostgreSQL database `ecommerce_analytics`.
+- Imported the six Gold analytical views:
+  - `gold.vw_sales_performance`
+  - `gold.vw_delivery_performance`
+  - `gold.vw_customer_rfm`
+  - `gold.vw_product_performance`
+  - `gold.vw_seller_performance`
+  - `gold.vw_customer_satisfaction_repurchase`
+- Organized the report into four pages:
+  1. Executive Overview
+  2. Customer Analytics
+  3. Delivery & Operations
+  4. Product & Seller Performance
+
+### Executive Overview
+
+Created visuals for total revenue, total orders, monthly revenue trend, and revenue by product category.
+
+Revenue is based on delivered-order item prices. Freight is kept separate from item revenue. The dataset is historical and primarily covers 2016–2018; the monthly trend must not be interpreted as current business performance.
+
+### Customer Analytics
+
+Created visuals for:
+- Repeat versus one-time customers.
+- Customers by RFM segment.
+- Satisfaction versus same-product repurchase.
+- Satisfied customer–product pairs percentage.
+
+The RFM view uses delivered-order purchasing behaviour. Its monetary metric excludes freight.
+
+The satisfaction percentage is calculated from records in `gold.vw_customer_satisfaction_repurchase`. It represents the percentage of reviewed customer–product pair records classified as satisfied, not the percentage of unique customers.
+
+The same-product repurchase analysis identifies a later delivered purchase in the available historical dataset. It does not prove that a customer will never return if no later purchase is observed. Reviews are associated with orders rather than necessarily with individual products.
+
+### Delivery & Operations
+
+Created visuals for delivered orders, delivery rate, delivery punctuality, and average delivery duration.
+
+The Delivery Rate measure calculates the share of orders whose status is `delivered`.
+
+The Average Delivery Duration card displays 12.50 days, based on delivered orders with available delivery-duration values.
+
+Delivery outcomes are based on the available actual and estimated dates. Unknown outcomes must not be treated as late or on time.
+
+### Product & Seller Performance
+
+Created:
+- Top 10 Products by Revenue.
+- Top 10 Sellers by Revenue.
+- Seller Delivery Performance scatter chart.
+- Seller Late Order Rate chart.
+
+The Top 10 charts rank products and sellers by item revenue, excluding freight.
+
+The scatter chart compares delivered-order volume with late-order count. Absolute late-order counts can be affected by order volume, so they should not be used alone to judge seller reliability.
+
+Created the `Late Order Rate` DAX measure:
+
+```dax
+Late Order Rate =
+DIVIDE(
+    SUM('gold vw_seller_performance'[late_order_count]),
+    SUM('gold vw_seller_performance'[delivered_order_count]),
+    0
+)
+```
+
+The measure is formatted as a percentage with two decimal places. A temporary table was used to verify the calculation for a seller with 122 delivered orders and 19 late orders:
+
+19 / 122 = 15.57%
+
+### Power BI Learning
+
+- A measure calculates a result dynamically according to the current filter context.
+- A calculated column classifies individual rows, such as the `Customer Type` classification based on purchase frequency.
+- Distinct count is appropriate when the business metric requires unique customer or order identities.
+- Visual-level filters restrict the data used by an individual visual.
+- A Top N filter helps display a readable ranking instead of thousands of product or seller IDs.
+- Separate report pages make the dashboard easier to navigate and reduce visual clutter.
+
+### Issues and Lessons Learned
+
+- The PostgreSQL connection initially required selecting the correct saved credential scope.
+- Power BI scatter-chart field wells differed from the initially described interface; the available fields had to be used instead.
+- Searching for a specific seller ID in the visual filter did not return the expected result. This was not resolved; avoid claiming that the specific seller's rate was independently verified in the temporary table.
+- A measure can calculate correctly for one seller without proving that every row and every business definition is correct. Validation should include multiple records and the intended aggregation level.
+
+### Status at End of Day 6
+
+- Gold tables and analytical views implemented and validated.
+- Power BI connected to PostgreSQL.
+- Initial four-page dashboard created.
+- Power BI report saved; final local file path still needs to be verified.
+- Day 6 documentation and Git review are pending.## Day 6 — Power BI Integration and Dashboard Development
+
+### Objective
+Connect Power BI to PostgreSQL and build an initial business analytics report using the Gold analytical views.
+
+### Work Completed
+
+- Connected Power BI Desktop to the local PostgreSQL database `ecommerce_analytics`.
+- Imported the six Gold analytical views:
+  - `gold.vw_sales_performance`
+  - `gold.vw_delivery_performance`
+  - `gold.vw_customer_rfm`
+  - `gold.vw_product_performance`
+  - `gold.vw_seller_performance`
+  - `gold.vw_customer_satisfaction_repurchase`
+- Organized the report into four pages:
+  1. Executive Overview
+  2. Customer Analytics
+  3. Delivery & Operations
+  4. Product & Seller Performance
+
+### Executive Overview
+
+Created visuals for total revenue, total orders, monthly revenue trend, and revenue by product category.
+
+Revenue is based on delivered-order item prices. Freight is kept separate from item revenue. The dataset is historical and primarily covers 2016–2018; the monthly trend must not be interpreted as current business performance.
+
+### Customer Analytics
+
+Created visuals for:
+- Repeat versus one-time customers.
+- Customers by RFM segment.
+- Satisfaction versus same-product repurchase.
+- Satisfied customer–product pairs percentage.
+
+The RFM view uses delivered-order purchasing behaviour. Its monetary metric excludes freight.
+
+The satisfaction percentage is calculated from records in `gold.vw_customer_satisfaction_repurchase`. It represents the percentage of reviewed customer–product pair records classified as satisfied, not the percentage of unique customers.
+
+The same-product repurchase analysis identifies a later delivered purchase in the available historical dataset. It does not prove that a customer will never return if no later purchase is observed. Reviews are associated with orders rather than necessarily with individual products.
+
+### Delivery & Operations
+
+Created visuals for delivered orders, delivery rate, delivery punctuality, and average delivery duration.
+
+The Delivery Rate measure calculates the share of orders whose status is `delivered`.
+
+The Average Delivery Duration card displays 12.50 days, based on delivered orders with available delivery-duration values.
+
+Delivery outcomes are based on the available actual and estimated dates. Unknown outcomes must not be treated as late or on time.
+
+### Product & Seller Performance
+
+Created:
+- Top 10 Products by Revenue.
+- Top 10 Sellers by Revenue.
+- Seller Delivery Performance scatter chart.
+- Seller Late Order Rate chart.
+
+The Top 10 charts rank products and sellers by item revenue, excluding freight.
+
+The scatter chart compares delivered-order volume with late-order count. Absolute late-order counts can be affected by order volume, so they should not be used alone to judge seller reliability.
+
+Created the `Late Order Rate` DAX measure:
+
+```dax
+Late Order Rate =
+DIVIDE(
+    SUM('gold vw_seller_performance'[late_order_count]),
+    SUM('gold vw_seller_performance'[delivered_order_count]),
+    0
+)
+```
+
+The measure is formatted as a percentage with two decimal places. A temporary table was used to verify the calculation for a seller with 122 delivered orders and 19 late orders:
+
+19 / 122 = 15.57%
+
+### Power BI Learning
+
+- A measure calculates a result dynamically according to the current filter context.
+- A calculated column classifies individual rows, such as the `Customer Type` classification based on purchase frequency.
+- Distinct count is appropriate when the business metric requires unique customer or order identities.
+- Visual-level filters restrict the data used by an individual visual.
+- A Top N filter helps display a readable ranking instead of thousands of product or seller IDs.
+- Separate report pages make the dashboard easier to navigate and reduce visual clutter.
+
+### Issues and Lessons Learned
+
+- The PostgreSQL connection initially required selecting the correct saved credential scope.
+- Power BI scatter-chart field wells differed from the initially described interface; the available fields had to be used instead.
+- Searching for a specific seller ID in the visual filter did not return the expected result. This was not resolved; avoid claiming that the specific seller's rate was independently verified in the temporary table.
+- A measure can calculate correctly for one seller without proving that every row and every business definition is correct. Validation should include multiple records and the intended aggregation level.
+
+
+## 1. Why We Use Power BI
+
+Power BI converts data into charts, KPI cards, and interactive reports to help businesses make decisions.
+
+**Our data flow:**
+
+CSV → Python → PostgreSQL Bronze → Silver → Gold → Power BI
+
+We use Gold views because they contain prepared, business-oriented analytical data.
+
+## 2. Visuals: When and Why to Use Them
+
+| Visual | When to use | Our project example |
+|---|---|---|
+| Card | Display one important KPI | Total Revenue, Delivery Rate |
+| Line chart | Show changes over time | Monthly Revenue Trend |
+| Bar chart | Compare or rank categories | Top 10 Products by Revenue |
+| Column chart | Compare a few categories | Repeat vs. One-Time Customers |
+| 100% Stacked Column | Compare proportions across groups | Satisfaction vs. Repurchase |
+| Scatter chart | Compare two numerical measures | Seller Delivery Performance |
+| Table | Inspect exact values | Verify Late Order Rate |
+| Slicer | Let users filter the report | Date, category, or seller filtering |
+
+### How to choose fields
+
+- **X-axis:** Time, categories, or a numeric measure, depending on the visual.
+- **Y-axis:** Categories or numeric measures, depending on the visual.
+- **Values:** The metric being calculated.
+- **Legend:** Divides data into groups or series.
+- **Size:** Controls the size of scatter-chart points.
+- **Tooltips:** Show extra details when hovering over a visual.
+
+The available field wells depend on the selected visual.
+
+## 3. Aggregations: How to Choose
+
+| Operation | Purpose | Example |
+|---|---|---|
+| Sum | Add numeric values | Total Revenue |
+| Count | Count records or populated values | Record count |
+| Distinct Count | Count unique identities | Total Orders |
+| Average | Calculate the mean | Average Delivery Duration |
+| Minimum / Maximum | Find the smallest or largest value | Earliest or latest date |
+
+**Important:** Always understand the table's grain before selecting an aggregation. Our sales view contains grouped rows, so summing its `order_count` can overcount orders. We use distinct `order_id` from the one-row-per-order delivery view instead.
+
+## 4. Filters and Conditions
+
+| Type | Purpose | Example |
+|---|---|---|
+| Visual-level filter | Filter one visual | `order_status = delivered` |
+| Page-level filter | Filter a report page | Analyze one year |
+| Report-level filter | Filter the whole report | Restrict the reporting period |
+| Top N filter | Show the highest or lowest items | Top 10 products by revenue |
+
+We filter delivery duration to delivered orders because undelivered orders do not have a completed delivery duration.
+
+## 5. Calculated Column vs. Measure
+
+**Calculated column:** Creates a value for each row. Use it for row-level classifications.
+
+Our example:
+
+```dax
+Customer Type =
+IF(
+    'gold vw_customer_rfm'[frequency] > 1,
+    "Repeat Customer",
+    "One-Time Customer"
+)
+```
+
+**Measure:** Calculates a result according to the current filter context. Use it for totals, averages, rates, and percentages.
+
+Our Late Order Rate measure:
+
+```dax
+Late Order Rate =
+DIVIDE(
+    SUM('gold vw_seller_performance'[late_order_count]),
+    SUM('gold vw_seller_performance'[delivered_order_count]),
+    0
+)
+```
+
+Format this measure as a percentage with two decimal places.
+
+## 6. Important DAX Functions
+
+| Function | What it does |
+|---|---|
+| `IF` | Checks a condition and returns one of two results |
+| `SUM` | Adds numeric values |
+| `DISTINCTCOUNT` | Counts unique values |
+| `CALCULATE` | Evaluates an expression under a modified filter context |
+| `DIVIDE` | Divides safely when the denominator may be zero |
+| `COUNTROWS` | Counts rows in a table expression |
+
+A percentage measure generally returns a fraction. Percentage formatting displays `0.0971` as `9.71%`.
+
+## 7. Our Main Business Metrics
+
+| Metric | Meaning |
+|---|---|
+| Total Revenue | Sum of delivered-order item prices, excluding freight |
+| Total Orders | Distinct orders across statuses |
+| Delivery Rate | Delivered-status orders ÷ total orders |
+| Average Delivery Duration | Average delivery days for eligible delivered orders |
+| Repeat Customers | Customers with more than one delivered order |
+| RFM Segments | Customer groups based on Recency, Frequency, and Monetary |
+| Satisfaction Percentage | Satisfied records ÷ all records in the satisfaction view |
+| Seller Late Order Rate | Late orders ÷ delivered orders |
+
+The satisfaction percentage of 76.66% represents reviewed customer–product pair records, not unique customers.
+
+The Olist data is historical, primarily from 2016–2018. These results are not live current business metrics.
+
+## 8. Four Dashboard Pages
+
+1. **Executive Overview:** Revenue, orders, monthly revenue trend, and category revenue.
+2. **Customer Analytics:** Repeat customers, RFM segments, satisfaction, and repurchase.
+3. **Delivery & Operations:** Delivery rate, punctuality, and average delivery duration.
+4. **Product & Seller Performance:** Top products, top sellers, seller delivery volume, and late-order rate.
+
+## 9. Key Rules to Remember
+
+- Start with the business question before selecting a visual.
+- Understand the source table's grain before counting or summing.
+- Use distinct count when the question concerns unique identities.
+- Keep freight separate from item revenue.
+- Use the correct filters for the metric.
+- A higher late-order count does not automatically mean worse seller performance; consider order volume and late-order rate.
+- Correlation or association does not prove causation.
+- Save the `.pbix` report with **Ctrl + S**.
+
+**Day 6 takeaway:** Choose the right source, aggregation, filter, DAX calculation, and visual to answer each business question accurately.
+
+# Day 7 — Project Review and Readiness Assessment
+
+## 1. Objective
+
+Review the existing AI-Powered E-Commerce Analytics Platform, verify the current development environment and project structure, assess completed components, and clarify the requirements for upcoming machine-learning and application-development milestones.
+
+## 2. Environment Review
+
+- Python version: 3.11.9
+- Virtual environment: `.venv`
+- Pandas: 3.0.6
+- NumPy: 2.4.6
+- SQLAlchemy: 2.1.4
+- PostgreSQL driver: `psycopg` 3.3.6
+- Configuration management: `python-dotenv` 1.2.4
+- Notebook support: `ipykernel` 7.4.0
+
+No `requirements.txt`, `pyproject.toml`, or `Pipfile` was present in the project root. The installed package list was reviewed. Additional dependencies will be considered when required by upcoming features.
+
+**Decision:** Create an appropriate dependency manifest during a later development or documentation milestone, after reviewing the packages actually required by the project.
+
+## 3. Project Structure Review
+
+The visible project structure includes:
+
+- `python/` — Python scripts and the exploratory analysis notebook.
+- `sql/` — eight organized SQL scripts for Bronze, Silver, Gold, and validation.
+- `docs/` — learning journal and architecture decisions.
+- `data/` — raw-data directory.
+- `screenshots/` — project screenshots.
+- `AI_Ecommerce_Analytics.pbix` — Power BI report at the project root.
+- `.env` and `.gitignore` — environment configuration and Git exclusion rules.
+- `README.md` — project overview and documentation.
+
+The `.env` file must remain excluded from GitHub. Its exclusion was not reverified during this review.
+
+## 4. Python Exploration and Ingestion Review
+
+### Exploration files
+
+The project contains both `analyze_orders.ipynb` and `analyze_orders.py`.
+
+The notebook supports interactive exploration, while the Python script contains basic order-data inspection. Their functionality overlaps.
+
+**Decision:** Keep both files for now. Reassess the script later if it has no distinct purpose.
+
+### Bronze ingestion
+
+The existing `ingest_bronze.py` implements historical CSV ingestion into PostgreSQL's Bronze layer. It includes file hashing, ingestion-batch tracking, chunked loading, and handling for failed ingestion attempts.
+
+The current implementation is designed around the existing historical dataset. It does not yet provide the complete simulated-event and manual-CSV ingestion workflow planned for the platform.
+
+**Decision:** Preserve the existing implementation. Design and implement the additional ingestion workflow during the relevant future milestone, including validation, source identification, and duplicate handling.
+
+## 5. SQL and Analytics Review
+
+The project contains eight SQL scripts covering:
+
+- Bronze table creation.
+- Silver table creation and loading.
+- Bronze-to-Silver validation.
+- Gold table creation and loading.
+- Gold analytical views.
+- Gold-layer validation.
+
+The existing Gold views support sales, delivery, customer RFM, product, seller, and customer satisfaction/repurchase analytics.
+
+The customer RFM view already provides recency, frequency, monetary value, RFM scores, and rule-based customer segments.
+
+**Key learning:** RFM segmentation is a business-rule-based method. It is not the same as K-means clustering or a trained customer inactivity-risk prediction model.
+
+**Decision:** Reuse the existing RFM features for future clustering rather than rebuilding them unnecessarily.
+
+## 6. Power BI Review
+
+The existing Power BI report contains four pages:
+
+1. Executive Overview
+2. Customer Analytics
+3. Delivery & Operations
+4. Product & Seller Performance
+
+The review confirmed that the planned visuals were present. A seller late-order-rate chart initially appeared to show only 100% values because the visual was scrollable and sorted in descending order. Scrolling revealed other rates, so no chart modification was required.
+
+### Important metric definitions
+
+- Revenue represents delivered-order item revenue where the relevant metric specifies delivered orders.
+- Delivery rate is based on order status, not independent verification of receipt.
+- The satisfaction percentage represents reviewed customer-product pairs classified as satisfied, not unique customers.
+- The review-to-product association has limitations because review scores are associated with orders.
+
+**Key learning:** Understand metric definitions, visual sorting, and scrolling before concluding that a chart or calculation is incorrect.
+
+## 7. Future Ingestion Requirements
+
+The platform is intended to support three data sources:
+
+1. Historical Olist data.
+2. Simulated transaction events.
+3. Optional manually uploaded CSV files.
+
+The future ingestion workflow should validate incoming data, identify its source, handle duplicates safely, report invalid records, and make accepted data available to downstream Silver and Gold processing.
+
+Historical observations, synthetic records, and manually supplied data must remain distinguishable.
+
+## 8. AI Insights Assistant Requirements
+
+The planned AI Insights Assistant should answer business questions using verified analytics and appropriately evaluated model outputs.
+
+Its intended scope includes:
+
+- Historical sales and customer analytics.
+- Analytics on newly ingested simulated or manual data.
+- Comparisons between sources when their data is compatible.
+- Customer segmentation and inactivity-risk predictions.
+- Review sentiment insights.
+- Revenue and order forecasts.
+- Evidence-based business recommendations.
+
+The assistant must not invent metrics or present synthetic data as actual business transactions.
+
+**Important limitation:** The historical Olist dataset ends in 2018. A forecast based only on this dataset must not be presented as a current real-world sales forecast.
+
+## 9. Development Decisions
+
+- Preserve the current Bronze–Silver–Gold architecture.
+- Keep both exploration files until their separate purposes are reassessed.
+- Reuse the existing RFM view for future machine-learning work.
+- Support both simulated events and manual CSV uploads in the future ingestion design.
+- Build forecasts and predictions using evaluated models.
+- Introduce new dependencies only when needed.
+- Update the README during a later documentation milestone.
+- Keep SQL queries in organized, version-controlled `.sql` files.
+
+## 10. Next Milestones
+
+| Milestone | Planned work |
+|---|---|
+| Day 8 | Python–PostgreSQL integration review and reusable analytics |
+| Day 9 | K-means customer segmentation |
+| Day 10 | Customer inactivity-risk baseline |
+| Day 11 | Review sentiment analysis and sales forecasting |
+| Day 12 | Simulated and manual CSV ingestion |
+| Day 13 | FastAPI integration |
+| Day 14 | AI Insights Assistant integration |
+| Day 15 | End-to-end testing and final documentation |
+
+The schedule is ambitious. Implementation, testing, and validation must take priority over simply marking milestones complete.
+
+## 11. Day 7 Completion Summary
+
+The project readiness review is complete. The environment, project structure, exploration files, Bronze ingestion design, SQL analytics, Power BI report, and future ingestion and AI requirements were reviewed.
+
+No application code was changed, no packages were installed, and no Git staging, commit, or push was performed during Day 7.
+
+**Status:** Day 7 — Completed.
+
+# Day 8 — Python–PostgreSQL Integration and Reusable Analytics
+
+## 1. Objective
+
+Connect Python to the existing PostgreSQL analytics database and implement reusable functions that retrieve verified business metrics from the Gold analytical views.
+
+## 2. Existing Database Connection
+
+Reviewed `python/test_db_connection.py` and confirmed that it:
+
+- Locates the project root.
+- Loads database configuration from `.env`.
+- Uses SQLAlchemy and the PostgreSQL `psycopg` driver.
+- Checks that required database settings are available.
+- Tests the connection by retrieving the current database and user.
+- Disposes of the database engine after the test.
+
+The connection test was executed successfully against `ecommerce_analytics`.
+
+## 3. Existing Ingestion and Exploration Code
+
+Reviewed `python/ingest_bronze.py` and `python/analyze_orders.py`.
+
+The Bronze ingestion script loads historical CSV files into PostgreSQL and tracks ingestion batches. The exploration script reads the historical orders CSV and displays its shape, sample rows, column information, missing-value counts, and order-status distribution.
+
+**Decision:** Keep these scripts separate from the new reusable analytics module. No refactoring was performed during Day 8.
+
+## 4. Reusable Analytics Module
+
+Created `python/analytics.py`.
+
+The module loads database configuration, creates a SQLAlchemy engine, and defines three functions:
+
+- `get_total_delivered_revenue()`
+- `get_revenue_by_category()`
+- `get_delivered_order_count()`
+
+The first two functions query `gold.vw_sales_performance`. The delivered-order count uses `gold.vw_delivery_performance`.
+
+The script also includes a verification section that runs when the file is executed directly.
+
+## 5. Verification Results
+
+| Metric | Verified result |
+|---|---:|
+| Total delivered-order item revenue | 13,221,498.11 |
+| Delivered orders | 96,478 |
+
+The top five categories returned by the category query were:
+
+1. `health_beauty` — 1,233,131.72
+2. `watches_gifts` — 1,166,176.98
+3. `bed_bath_table` — 1,023,434.76
+4. `sports_leisure` — 954,852.55
+5. `computers_accessories` — 888,724.61
+
+The revenue result matched the independent SQL query. The delivered-order count matched the count from `gold.vw_delivery_performance`.
+
+## 6. Important Learning: Data Grain
+
+The sales view groups data across dimensions such as date, product, customer location, and seller. Its aggregated `order_count` cannot automatically be treated as a count of distinct orders when summed across groups.
+
+The delivery view contains one row per order, making it appropriate for counting orders by status.
+
+**Lesson:** Select the analytical view according to the grain of the metric being calculated. Incorrect aggregation can produce misleading business metrics.
+
+## 7. How This Supports Future Work
+
+The Python analytics module establishes a reusable pattern for retrieving verified business metrics from PostgreSQL.
+
+Future milestones can extend this approach to retrieve customer and sales data for:
+
+- K-means customer segmentation.
+- Customer inactivity-risk prediction.
+- Revenue and order forecasting.
+- FastAPI endpoints.
+- The AI Insights Assistant.
+
+Retrieving metrics is not itself a prediction. Machine-learning and forecasting models will require appropriate features, training, evaluation, and validation.
+
+## 8. Decisions and Limitations
+
+- Preserve the existing Bronze–Silver–Gold architecture.
+- Keep the connection test separate from analytics functions.
+- Reuse existing Gold views instead of duplicating their transformations.
+- Avoid adding a shared connection module until its need is demonstrated.
+- Introduce further analytics functions as required by upcoming milestones.
+
+## 9. Day 8 Completion Status
+
+**Status: Completed.**
+
+Python successfully retrieved and verified total delivered-order item revenue, category-level revenue, and delivered-order counts from the existing PostgreSQL Gold views.
