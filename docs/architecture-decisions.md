@@ -466,3 +466,74 @@ These findings describe the current dataset and query definitions; they are not 
 **Limitation**
 
 Passing these checks does not prove every possible business rule is correct. Satisfaction/repurchase logic still requires deeper validation, and the hard-coded expectation of 774 date rows is specific to the current dataset.
+
+## ADR: Customer Inactivity-Risk Baseline
+
+**Status:** Implemented experimentally; not production-ready.
+
+### Context
+
+The Gold layer contains customer-level analytics, and the project requires a machine-learning component that can estimate customer inactivity risk.
+
+The historical Olist dataset is old and imbalanced for this target. The model therefore needs an explicit target definition, historical cutoff, outcome window, and evaluation report.
+
+### Decision
+
+Use PostgreSQL SQL to construct customer-level training records and Python with Pandas and scikit-learn to train and evaluate the model.
+
+The initial features are:
+
+- `recency_days`
+- `frequency`
+- `monetary`
+
+Use a historical cutoff of June 1, 2018. Define the outcome using delivered purchases from June 1 through August 29, 2018.
+
+Use a scikit-learn Pipeline containing StandardScaler and Logistic Regression with `class_weight="balanced"`.
+
+Save the trained model bundle to `models/inactivity_risk_model.joblib` and use a separate prediction script for new customer feature records.
+
+### Rationale
+
+- PostgreSQL is already the source of truth for the relational historical data.
+- SQL is suitable for joining and aggregating transactions into customer-level features.
+- Python and scikit-learn provide the training, evaluation, and prediction tools.
+- A Pipeline keeps scaling and model application consistent.
+- A separate prediction script avoids retraining the model for every prediction request.
+- A historical cutoff helps separate known features from future outcomes.
+
+### Evidence and Limitations
+
+The training dataset contains 75,387 customer records:
+
+- Active label 0: 419.
+- Inactive label 1: 74,968.
+
+The baseline's active-class precision was approximately 0.01, and its test accuracy was approximately 0.59. These results are insufficient to establish useful real-world inactivity-risk performance.
+
+The prediction examples were synthetic. Their outputs are functional demonstrations, not evidence of performance on real current customers.
+
+The model has not been validated on a genuinely later customer population, its probabilities have not been shown to be calibrated, and it is not yet connected to a production API or retraining workflow.
+
+### Consequences
+
+- Keep the current model as an experimental baseline.
+- Do not use its predictions as the sole basis for customer-retention actions.
+- Do not describe its output as a verified probability of future inactivity.
+- Evaluate the next version with class-specific metrics and time-based validation.
+- Keep generated prediction CSV files and the saved model artifact out of normal source-code commits unless model versioning is deliberately introduced.
+
+### Implementation Files
+
+- `sql/11_inactivity_risk_data_check.sql`
+- `sql/12_build_inactivity_training_data.sql`
+- `python/inactivity_risk_model.py`
+- `python/predict_inactivity_risk.py`
+- `models/inactivity_risk_model.joblib` — generated artifact
+- `data/processed/new_customers_for_prediction.csv` — example input
+- `data/processed/inactivity_risk_predictions.csv` — generated output
+- `docs/learning/project-learning.md`
+
+### Follow-up
+
+Improve evaluation and compare baselines before promoting the model to a downstream application.

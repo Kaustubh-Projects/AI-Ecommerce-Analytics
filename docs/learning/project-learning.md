@@ -2234,3 +2234,445 @@ These are descriptive interpretations of the observed averages, not predefined l
 ## Day 9 Status
 
 The K-means workflow ran successfully, cluster assignments were saved, and the initial results were recorded for future interpretation and integration.
+
+# Day 10 — Customer Inactivity-Risk Prediction
+
+## 1. Objective
+
+The objective was to build a first machine-learning model that predicts whether a customer may become inactive, using historical customer purchase behaviour.
+
+This milestone connects the existing PostgreSQL analytics pipeline to a machine-learning workflow in Python.
+
+The goal was to learn the complete process:
+
+1. Define a business problem that can be measured.
+2. Select historical data and define a prediction target.
+3. Build customer-level features using SQL.
+4. Train a baseline classification model in Python.
+5. Evaluate the model instead of relying only on accuracy.
+6. Save the trained model for future predictions.
+7. Load new customer features and generate predictions.
+8. Document limitations before considering business use.
+
+Important: this is an experimental baseline, not a production-ready customer-retention system.
+
+## 2. Business Problem
+
+An e-commerce business may want to identify customers who are at risk of becoming inactive so that it can investigate possible retention actions.
+
+For this project, inactivity is defined using a specific historical observation window and a future outcome window.
+
+A customer is labelled:
+
+- Active (label 0): at least one delivered order during the future outcome window.
+- Inactive (label 1): no delivered order during the future outcome window.
+
+This definition is specific to this experiment. It does not mean that the customer has permanently left the business.
+
+## 3. Why We Chose These Technologies
+
+### PostgreSQL and SQL
+
+We used PostgreSQL to retrieve and prepare historical customer purchase data because the source data is already stored in relational tables.
+
+SQL is suitable for:
+
+- Joining orders, customers, and order items.
+- Filtering delivered orders.
+- Grouping transactions by customer.
+- Calculating recency, frequency, and monetary value.
+- Creating a repeatable training dataset.
+
+We did not move the entire relational dataset into Python to recreate every database operation. Instead, SQL prepares the required customer-level dataset and Python handles model training and prediction.
+
+### Python and Pandas
+
+Python is used to connect the database output to the machine-learning workflow.
+
+Pandas provides a DataFrame that can be used to inspect labels, select features, check data types, and pass data to scikit-learn.
+
+Python is also useful for evaluating the model, saving the trained model, and applying it to new customer records.
+
+### Scikit-learn
+
+Scikit-learn was selected because it provides the components needed for a straightforward, reproducible baseline:
+
+- `train_test_split`: separates data for training and evaluation.
+- `StandardScaler`: standardizes numerical features.
+- `LogisticRegression`: trains a binary classification model.
+- `classification_report`: reports precision, recall, F1-score, and support.
+- `confusion_matrix`: shows the counts of correct and incorrect predictions.
+- `Pipeline`: keeps feature scaling and model training together.
+
+We selected Logistic Regression as a baseline because it is a relatively simple classification algorithm and gives us a starting point for comparison.
+
+It is not automatically the best algorithm for this problem. More advanced models should only be considered after establishing a sound evaluation method.
+
+### Why StandardScaler?
+
+Recency, frequency, and monetary value have different numerical scales.
+
+For example, frequency may be a small integer while monetary value may be several thousand. StandardScaler puts numerical features on a comparable scale by centring them and scaling them according to their standard deviation.
+
+Scaling is useful for Logistic Regression because its optimization can be affected by features with very different scales.
+
+The scaler is included in the Pipeline so that it is fitted using the training data and then applied consistently to the test data and future inputs.
+
+### Why class_weight="balanced"?
+
+The historical labels are highly imbalanced: very few customers purchased during the future outcome window compared with customers who did not.
+
+A model that mostly predicts the majority class could obtain apparently good accuracy while failing to identify the less common class.
+
+`class_weight="balanced"` adjusts the training penalty for each class according to its frequency. It gives the minority class more influence during training.
+
+This does not guarantee a good model. It can also increase false-positive predictions, so precision, recall, and other metrics still need to be checked.
+
+### Why save the model with joblib?
+
+Training a model every time a prediction is requested would be unnecessary for this initial workflow.
+
+The trained model and its supporting metadata are saved in:
+
+`models/inactivity_risk_model.joblib`
+
+The saved bundle includes the model and information such as the feature names, target definition, observation cutoff, outcome window, and label descriptions.
+
+This makes it possible for a separate prediction script to load the model without repeating the training process.
+
+The model file is a generated artifact and should not be committed to Git unless a deliberate model-versioning policy is established.
+
+## 4. Historical Data Investigation
+
+Before building the model, we investigated the available historical data.
+
+Important findings:
+
+- The historical dataset contains 99,441 rows in the orders table.
+- The orders table includes multiple statuses, not just delivered orders.
+- There are 96,478 orders with status `delivered`.
+- The latest purchase timestamp among delivered orders was August 29, 2018.
+- The latest purchase timestamp across all orders was October 17, 2018.
+- The historical data does not represent current 2026 customer behaviour.
+
+We therefore cannot describe this dataset as live customer data or claim that the resulting model has been validated on current customers.
+
+## 5. Why We Used a Historical Cutoff
+
+To train a predictive model, the features must be calculated from information available before the outcome being predicted.
+
+We used June 1, 2018 as the observation cutoff.
+
+The feature window includes delivered purchases before June 1, 2018. The outcome window covers June 1, 2018 through August 29, 2018, inclusive.
+
+The SQL uses an exclusive upper timestamp boundary of August 30, 2018 to include all purchases on August 29.
+
+This design helps prevent future purchase information from leaking into the historical features.
+
+For example, a customer's purchase on July 15, 2018 must not increase the customer's frequency feature when predicting whether the customer will purchase during the June–August outcome window.
+
+This separation between features and outcomes is essential for predictive modelling.
+
+## 6. Customer Features
+
+We created three features for each customer.
+
+| Feature | Meaning | Why it matters |
+|---|---|---|
+| `recency_days` | Number of days between the June 1 cutoff date and the customer's latest eligible delivered purchase | Measures how recently the customer purchased |
+| `frequency` | Number of distinct eligible delivered orders before the cutoff | Measures historical purchase frequency |
+| `monetary` | Sum of item prices across eligible delivered orders before the cutoff | Measures historical item spending |
+
+The monetary feature uses item prices and does not include freight charges.
+
+These features are based on RFM analysis:
+
+- Recency
+- Frequency
+- Monetary value
+
+RFM is useful because it summarises customer behaviour in a small number of interpretable features.
+
+However, these three features do not capture every possible factor affecting inactivity. For example, they do not include customer demographics, marketing exposure, product preferences, or reasons for not purchasing.
+
+## 7. SQL Files Created
+
+### `sql/11_inactivity_risk_data_check.sql`
+
+Purpose: investigate the historical data and confirm that there is a meaningful observation period and future outcome period.
+
+The queries examined order statuses, date coverage, eligible customers, and purchase behaviour across time windows.
+
+Key findings:
+
+- 75,387 eligible customers had at least one delivered order before June 1, 2018.
+- 419 eligible customers had at least one delivered order in the June 1–August 29 outcome window.
+- 74,968 eligible customers had no delivered order during that outcome window.
+
+The query file keeps the investigation documented and repeatable instead of leaving the work only in pgAdmin Query Tool history.
+
+### `sql/12_build_inactivity_training_data.sql`
+
+Purpose: create the customer-level dataset used by the machine-learning model.
+
+The query performs the following operations:
+
+1. Selects eligible delivered orders before June 1, 2018.
+2. Joins orders to customers and order items.
+3. Calculates the value of each eligible order using item prices.
+4. Aggregates orders by customer to calculate recency, frequency, and monetary value.
+5. Identifies customers with delivered orders during the outcome window.
+6. assigns label 0 to active customers and label 1 to inactive customers.
+7. Returns one record per eligible customer.
+
+The query produced 75,387 customer records.
+
+The label distribution was:
+
+- Active: 419 customers.
+- Inactive: 74,968 customers.
+
+These counts add up to 75,387.
+
+The training query uses a historical cutoff and outcome window so that the features and labels represent different periods.
+
+## 8. Why We Used a Train/Test Split
+
+A model should not be evaluated only on the same records used to train it.
+
+We used an 80/20 train/test split with stratification and a fixed random seed.
+
+- Training data: used to fit the model.
+- Test data: held aside to evaluate its predictions.
+- Stratification: preserves approximately the same class proportions in both sets.
+- Random seed: makes the random split reproducible.
+
+This is a useful initial experiment, but it is not the strongest validation method for time-dependent customer behaviour.
+
+A future improvement is to evaluate the model across multiple historical cutoffs or use a strictly later time period for testing. That would better simulate the task of predicting future behaviour from past data.
+
+## 9. Python Model File
+
+File: `python/inactivity_risk_model.py`
+
+The script performs these steps:
+
+1. Connects to PostgreSQL using the project's database configuration.
+2. Executes the SQL in `sql/12_build_inactivity_training_data.sql`.
+3. Loads the returned customer-level data into Pandas.
+4. Separates the feature columns from the target label.
+5. Splits the data into training and test sets.
+6. Builds a Pipeline containing StandardScaler and Logistic Regression.
+7. Trains the model using the training data.
+8. Generates predictions for the held-out test data.
+9. Prints the classification report and confusion matrix.
+10. Saves the trained model and supporting metadata using joblib.
+
+### Why use a Pipeline?
+
+The Pipeline combines preprocessing and model training into one object.
+
+This reduces the risk of accidentally applying a different scaling procedure during prediction. It also helps prevent test data from influencing the fitted scaler.
+
+The Pipeline is a cleaner approach than manually fitting separate preprocessing steps for training and prediction.
+
+## 10. Actual Model Evaluation
+
+The training script ran successfully and reported the following test-set metrics:
+
+| Metric | Active class | Inactive class |
+|---|---:|---:|
+| Precision | 0.01 | 1.00 |
+| Recall | 0.54 | 0.59 |
+| F1-score | 0.01 | 0.74 |
+| Test support | 84 | 14,994 |
+
+Test-set accuracy was approximately 0.59.
+
+The confusion matrix, with actual classes as rows and predicted classes as columns, was:
+
+| Actual / Predicted | Active | Inactive |
+|---|---:|---:|
+| Active | 45 | 39 |
+| Inactive | 6,114 | 8,880 |
+
+### How to interpret these results
+
+For the Active class:
+
+- 45 active customers were correctly predicted as active.
+- 39 active customers were incorrectly predicted as inactive.
+- The model also predicted many inactive customers as active, resulting in very low active-class precision.
+
+For the Inactive class:
+
+- 8,880 inactive customers were correctly predicted as inactive.
+- 6,114 inactive customers were incorrectly predicted as active.
+
+The inactive-class precision rounds to 1.00 in the displayed report because almost all records predicted as inactive were actually inactive. The displayed rounded value should not be interpreted as perfect performance.
+
+### Main conclusion
+
+The model has learned a classification pattern, but its performance is not good enough for reliable business decisions.
+
+The active-class precision is approximately 0.01, which means that the model generates many false positives when trying to identify active customers.
+
+Accuracy alone is not a suitable success measure for this dataset because the inactive class dominates the data.
+
+The next model iteration should focus on evaluating the minority class, comparing useful baselines, examining decision thresholds, and using stronger time-based validation.
+
+Do not claim that this model reliably identifies customers who will become inactive.
+
+## 11. Why We Created a Separate Prediction Script
+
+File: `python/predict_inactivity_risk.py`
+
+The training script and prediction script have different responsibilities.
+
+`inactivity_risk_model.py` trains and evaluates the model.
+
+`predict_inactivity_risk.py` loads an already-trained model and applies it to new customer feature records.
+
+Separating the scripts makes the workflow easier to understand and allows predictions to be tested without retraining the model every time.
+
+The prediction script:
+
+1. Loads `models/inactivity_risk_model.joblib`.
+2. Reads `data/processed/new_customers_for_prediction.csv`.
+3. Checks for the required feature columns and missing or invalid numerical inputs.
+4. Passes the feature values to the saved Pipeline.
+5. Generates predicted labels and estimated inactivity probabilities.
+6. Saves the results to `data/processed/inactivity_risk_predictions.csv`.
+
+The current input file uses these columns:
+
+- `customer_id`
+- `recency_days`
+- `frequency`
+- `monetary`
+
+The `customer_id` column identifies each input record. It is not one of the three model features.
+
+## 12. Prediction Test and Important Caveat
+
+The prediction script ran on five example records.
+
+The displayed results included:
+
+| Example customer | Recency days | Frequency | Monetary value | Predicted status | Estimated inactivity probability |
+|---|---:|---:|---:|---|---:|
+| CUST001 | 180 | 1 | 100 | Inactive | 0.5160 |
+| CUST002 | 10 | 8 | 15,000 | Inactive | 0.8226 |
+| CUST003 | 60 | 3 | 2,500 | Active | 0.3016 |
+| CUST004 | 300 | 1 | 50 | Inactive | 0.5610 |
+| CUST005 | 30 | 5 | 5,000 | Active | 0.1796 |
+
+These inputs are synthetic examples, not verified real customers.
+
+The prediction for CUST002 is a useful warning: despite its recent purchase, high frequency, and high monetary value, the model estimated a high inactivity probability.
+
+This illustrates why successful execution is not the same as a trustworthy prediction. The model's learned relationships and class weighting need further investigation.
+
+The estimated probabilities are model outputs, not validated real-world probabilities. They have not been demonstrated to be well calibrated.
+
+The CSV and model files are generated outputs. They should remain outside the Git commit unless there is a deliberate reason to version them.
+
+## 13. Errors, Decisions, and Lessons
+
+### Lesson 1: An imbalanced dataset changes how we evaluate a model
+
+A model can have a seemingly reasonable accuracy while performing poorly on a class that matters to the business.
+
+Always inspect class counts and use class-specific precision, recall, F1-score, and a confusion matrix.
+
+### Lesson 2: Class weighting is not a complete solution
+
+`class_weight="balanced"` helps the minority class influence training, but it does not guarantee useful predictions.
+
+It can create more false positives, so its effect must be evaluated.
+
+### Lesson 3: Historical cutoff dates matter
+
+Features must be calculated using information available before the prediction point.
+
+Including future purchases in historical frequency or monetary values would leak outcome information into the model.
+
+### Lesson 4: A probability is not automatically calibrated
+
+The model's predicted probability should not be described as the verified likelihood that a customer will become inactive.
+
+Calibration and threshold selection require additional evaluation.
+
+### Lesson 5: A saved model is not automatically a production service
+
+The current model is loaded by a Python script. It is not yet connected to FastAPI, a scheduled retraining process, a live event pipeline, or a production monitoring system.
+
+Those components must be implemented and tested separately.
+
+### Lesson 6: Data quality and model quality are different
+
+A SQL query can return the expected number of rows and the Python script can complete successfully while the resulting model remains weak.
+
+Database validation confirms aspects of the input data. Model evaluation assesses predictive performance. Both are necessary.
+
+## 14. Current Status
+
+Implemented and executed:
+
+- Historical customer feature and label query.
+- Customer inactivity-risk baseline training script.
+- Train/test evaluation.
+- Saved model bundle.
+- Separate prediction script.
+- Prediction output CSV using synthetic example inputs.
+- SQL investigation and training-query files.
+
+Not yet established:
+
+- Reliable predictive performance on genuinely future data.
+- Performance on current 2026 customer behaviour.
+- Probability calibration.
+- A suitable business decision threshold.
+- Scheduled retraining and model monitoring.
+- Production API integration.
+
+The model is therefore an experimental milestone, not a completed production prediction system.
+
+## 15. Interview Learning
+
+**Why did we use Logistic Regression?**
+
+It provides a relatively simple baseline for binary classification. We can compare more complex models against it later.
+
+**Why was accuracy insufficient?**
+
+The labels are highly imbalanced. Class-specific metrics and the confusion matrix reveal errors hidden by the overall accuracy.
+
+**What is data leakage?**
+
+Data leakage occurs when training features include information that would not have been available at prediction time, or when evaluation information improperly influences training.
+
+**Why use a historical cutoff?**
+
+It separates the period used to calculate customer behaviour from the future period used to define the outcome.
+
+**Why use a Pipeline?**
+
+It combines preprocessing and the estimator, keeping training and prediction transformations consistent.
+
+**What is the difference between a predicted label and a probability?**
+
+The label is the selected class. The probability is the model's estimated score for a class; it is not automatically a calibrated real-world likelihood.
+
+**Why is the model not production-ready?**
+
+Its active-class precision is extremely low, its validation is limited, its probability calibration is unknown, and it has not been evaluated on a genuinely later customer population.
+
+## 16. Next Steps
+
+1. Preserve the current results as the baseline.
+2. Compare a simple rule-based baseline with Logistic Regression.
+3. Investigate the effect of class imbalance and decision thresholds.
+4. Prefer time-based validation for the next model evaluation.
+5. Avoid claiming reliable predictions until the evaluation supports that claim.
+6. Continue with the next project milestone: review sentiment analysis and sales forecasting.
