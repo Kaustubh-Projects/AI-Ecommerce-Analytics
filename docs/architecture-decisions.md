@@ -537,3 +537,43 @@ The model has not been validated on a genuinely later customer population, its p
 ### Follow-up
 
 Improve evaluation and compare baselines before promoting the model to a downstream application.
+
+## Day 11 — Sentiment Analysis and Sales Forecasting
+
+### ADR: Review Sentiment Analysis Baseline
+
+**Status:** Implemented experimentally.
+
+**Decision:** Retrieve review text and scores from PostgreSQL using Python. Use TF-IDF followed by Logistic Regression in a scikit-learn Pipeline.
+
+**Rationale:** This provides an understandable text-classification baseline without requiring a downloaded pretrained language model or additional NLP packages.
+
+**Label definition:** Review scores 1–2 are labelled Negative, score 3 Neutral, and scores 4–5 Positive.
+
+**Evidence:** The model processed 40,968 reviews with usable text. Test accuracy was 0.79 and weighted F1-score was 0.82. Neutral-class F1-score was 0.31.
+
+**Limitations:** Labels are derived from review scores, not independently verified sentiment. The neutral class performs poorly. The results do not establish human-level sentiment accuracy.
+
+**Implementation:** `python/review_sentiment_analysis.py`
+
+### ADR: Monthly Sales Forecasting Baseline
+
+**Status:** Implemented experimentally.
+
+**Decision:** Aggregate delivered-order item revenue monthly in PostgreSQL. Use Python to create a chronological train/test split and evaluate a simple last-training-month revenue baseline.
+
+**Rationale:** A simple baseline provides a reference that a more advanced forecasting model must outperform.
+
+**Evidence:** There were 24 monthly periods from September 2016 through August 2018. Nineteen months were used for training and five for testing. MAE was R$68,365.41 and RMSE was R$78,642.62.
+
+**Limitations:** Five test observations provide limited evidence. The baseline does not adapt to trend or seasonality. The historical dataset ends in 2018, so these results do not validate current 2026 sales forecasts.
+
+**Implementation:**
+- `sql/14_sales_forecasting_data.sql`
+- `python/sales_forecasting.py`
+
+### Architecture Consequence
+
+Both features are Python analytical components that read from PostgreSQL and produce generated outputs. They do not require changes to the Bronze, Silver, or Gold schemas.
+
+The sentiment and forecasting outputs can later be integrated into FastAPI and the AI Insights Assistant after their quality and limitations are documented.

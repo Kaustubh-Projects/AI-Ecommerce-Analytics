@@ -2676,3 +2676,172 @@ Its active-class precision is extremely low, its validation is limited, its prob
 4. Prefer time-based validation for the next model evaluation.
 5. Avoid claiming reliable predictions until the evaluation supports that claim.
 6. Continue with the next project milestone: review sentiment analysis and sales forecasting.
+
+# Day 11 — Review Sentiment Analysis and Sales Forecasting
+
+## 1. Objective
+
+Implement two analytical capabilities:
+1. Classify customer review text into broad sentiment categories.
+2. Establish a baseline for forecasting monthly delivered-order item revenue.
+
+The goal was to learn the complete process from PostgreSQL data retrieval through Python modelling, evaluation, and saving generated outputs.
+
+## 2. Sentiment Analysis
+
+### Data findings
+
+The Silver review table contains 99,224 review records. Of these, 40,968 have usable review text, while 58,256 do not.
+
+Only reviews with non-empty text and a valid review score were used for the text-classification experiment.
+
+### Why TF-IDF?
+
+TF-IDF converts text into numerical features that a machine-learning algorithm can process. It gives words a weight based on their importance within the document collection.
+
+We used unigrams and bigrams so the model could learn individual words and two-word expressions.
+
+### Why Logistic Regression?
+
+Logistic Regression is a relatively simple text-classification baseline. It provides a practical starting point before introducing more complex NLP models.
+
+The model uses a scikit-learn Pipeline containing TF-IDF and Logistic Regression. This keeps text preprocessing and classification together and helps prevent preprocessing leakage across the training/test split.
+
+### Label definition
+
+We derived approximate sentiment labels from review scores:
+- Scores 1–2: Negative
+- Score 3: Neutral
+- Scores 4–5: Positive
+
+These are proxy labels, not independently verified human sentiment labels.
+
+### Actual results
+
+Reviews used: 40,968
+
+Label distribution:
+- Positive: 26,521
+- Negative: 10,890
+- Neutral: 3,557
+
+Test classification report:
+
+| Class | Precision | Recall | F1-score | Support |
+|---|---:|---:|---:|---:|
+| Negative | 0.80 | 0.78 | 0.79 | 2,178 |
+| Neutral | 0.24 | 0.45 | 0.31 | 711 |
+| Positive | 0.96 | 0.84 | 0.90 | 5,305 |
+| Macro average | 0.66 | 0.69 | 0.67 | 8,194 |
+| Weighted average | 0.85 | 0.79 | 0.82 | 8,194 |
+
+Accuracy: 0.79.
+
+### Interpretation
+
+The model performs best on positive reviews. Negative classification is also useful as an initial baseline. Neutral classification is weak, with an F1-score of 0.31.
+
+The classes are imbalanced, and a numeric review score does not always represent the sentiment expressed in the text. Therefore, these results measure agreement with score-derived labels, not verified human sentiment accuracy.
+
+### Output
+
+Python script:
+`python/review_sentiment_analysis.py`
+
+Generated predictions:
+`data/processed/review_sentiment_predictions.csv`
+
+The output contains the original review fields, score-derived sentiment labels, and predicted sentiment.
+
+The generated CSV is an output artifact and should not be included in the normal source-code commit.
+
+## 3. Sales Forecasting
+
+### Data preparation
+
+The SQL query aggregates delivered-order item revenue by purchase month.
+
+We used:
+- `DATE_TRUNC('month', order_purchase_timestamp)` to aggregate by month.
+- `COUNT(DISTINCT order_id)` to count orders without multiplying orders containing several items.
+- `SUM(order_items.price)` to calculate item revenue without freight.
+
+SQL file:
+`sql/14_sales_forecasting_data.sql`
+
+### Why a chronological split?
+
+Time-series forecasting must respect time order. Training on later observations and testing on earlier ones would not simulate a real future prediction.
+
+We used the first 19 monthly observations for training and the final five months for testing.
+
+The observed period contains 24 calendar months, from September 2016 through August 2018.
+
+### Why start with a simple baseline?
+
+Before choosing a complex forecasting model, we need a benchmark. The baseline predicts every test month using the final training month's revenue.
+
+This makes it possible to check whether a future model improves on a simple reference.
+
+### Actual baseline results
+
+| Month | Actual item revenue | Baseline forecast |
+|---|---:|---:|
+| April 2018 | R$973,534.09 | R$953,356.25 |
+| May 2018 | R$977,544.69 | R$953,356.25 |
+| June 2018 | R$856,077.86 | R$953,356.25 |
+| July 2018 | R$867,953.46 | R$953,356.25 |
+| August 2018 | R$838,576.64 | R$953,356.25 |
+
+MAE: R$68,365.41
+
+RMSE: R$78,642.62
+
+### Interpretation
+
+MAE measures average absolute forecasting error. RMSE gives larger errors more weight.
+
+The baseline does not adapt to the declining revenue in the later test months. The evaluation is limited because it uses only five test observations.
+
+The historical dataset ends in 2018. These results must not be presented as evidence of current 2026 sales performance or a reliable current sales forecast.
+
+### Output
+
+Python script:
+`python/sales_forecasting.py`
+
+Generated evaluation:
+`data/processed/sales_forecast_evaluation.csv`
+
+The generated CSV should remain outside the normal source-code commit.
+
+## 4. Errors and Lessons
+
+- The first sentiment script failed because `test_db_connection.py` did not define the assumed `get_engine()` function.
+- We preserved the existing connection-test script and adapted the sentiment script to create its own SQLAlchemy engine using the existing `.env` settings.
+- The review dataset contains substantial missing text, so not every review can be classified.
+- The sentiment labels are derived from scores and are not perfect ground truth.
+- Class imbalance affects sentiment evaluation, particularly neutral sentiment.
+- A successful script execution does not prove that a model is reliable.
+- A chronological test split is more appropriate for forecasting than a random split.
+- A constant baseline is useful for comparison but does not capture changing trends or seasonality.
+
+## 5. Current Status
+
+Completed:
+- Review data inspection.
+- Sentiment classification baseline.
+- Classification evaluation.
+- Sentiment prediction CSV generation.
+- Monthly revenue aggregation query.
+- Chronological sales forecasting baseline.
+- MAE and RMSE evaluation.
+- Forecast evaluation CSV generation.
+
+Remaining:
+- Compare an improved forecasting model with the baseline.
+- Investigate neutral sentiment errors.
+- Validate model quality beyond score-derived labels where feasible.
+- Integrate evaluated outputs into the application and AI Insights Assistant later.
+
+Day 11 establishes working experimental baselines, not production-ready models.
