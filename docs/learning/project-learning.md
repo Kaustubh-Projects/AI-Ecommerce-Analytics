@@ -2176,3 +2176,61 @@ Retrieving metrics is not itself a prediction. Machine-learning and forecasting 
 **Status: Completed.**
 
 Python successfully retrieved and verified total delivered-order item revenue, category-level revenue, and delivered-order counts from the existing PostgreSQL Gold views.
+
+# Day 9 — K-means Customer Segmentation
+
+## Objective
+
+Apply K-means clustering to customer purchasing behaviour using the existing PostgreSQL Gold RFM view.
+
+## Implementation
+
+Created `python/customer_segmentation.py`.
+
+The script:
+- Retrieves customer ID, recency, frequency, and monetary value from `gold.vw_customer_rfm`.
+- Scales the three numerical features using `StandardScaler`.
+- Compares cluster counts from 2 to 7 using sampled silhouette scores.
+- Selects the candidate with the highest sampled score.
+- Fits the final K-means model on all customers.
+- Saves customer-level cluster assignments to `data/processed/customer_segments.csv`.
+- Prints a summary of each cluster.
+
+## Evaluation Results
+
+| Number of clusters | Sample silhouette score |
+|---:|---:|
+| 2 | 0.7418 |
+| 3 | 0.4568 |
+| 4 | 0.4923 |
+| 5 | 0.4959 |
+| 6 | 0.4273 |
+| 7 | 0.4494 |
+
+Two clusters had the highest sampled silhouette score of 0.7418 among the candidates tested.
+
+## Cluster Summary
+
+| Cluster | Customers | Average recency (days) | Average frequency | Average monetary |
+|---:|---:|---:|---:|---:|
+| 0 | 2,807 | 269.95 | 2.11 | 276.06 |
+| 1 | 90,551 | 288.02 | 1.00 | 137.45 |
+
+Cluster 0 contains a smaller group with higher average purchase frequency and monetary value. Cluster 1 contains mostly one-time customers with lower average monetary value.
+
+These are descriptive interpretations of the observed averages, not predefined labels learned by K-means.
+
+## Important Learning and Limitations
+
+- K-means groups customers based on numerical feature similarity.
+- Scaling helps prevent features with larger numerical ranges from dominating distance calculations.
+- The silhouette score was calculated on a sample of 3,000 customers to avoid excessive memory usage.
+- The final model was fitted on all 93,358 customers.
+- Cluster IDs are arbitrary labels.
+- The selected two-cluster solution is the best among the tested candidates, not proof that it is the only suitable business segmentation.
+- RFM clustering is different from the existing rule-based RFM segmentation.
+- The saved CSV is a generated data output and should remain excluded from Git.
+
+## Day 9 Status
+
+The K-means workflow ran successfully, cluster assignments were saved, and the initial results were recorded for future interpretation and integration.
