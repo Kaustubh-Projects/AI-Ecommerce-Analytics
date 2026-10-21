@@ -20,6 +20,9 @@ data/raw/*
 data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+# Incoming test data
+data/incoming/*
+!data/incoming/.gitkeep
 
 # Model artifacts
 models/*.pkl
