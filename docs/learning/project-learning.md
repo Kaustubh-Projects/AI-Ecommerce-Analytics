@@ -2845,3 +2845,532 @@ Remaining:
 - Integrate evaluated outputs into the application and AI Insights Assistant later.
 
 Day 11 establishes working experimental baselines, not production-ready models.
+
+
+## Day 12 — Incoming Order Event Pipeline
+
+### Objective
+Build a pipeline that accepts manual CSV order events and simulated events, stores them in PostgreSQL, transforms them, and exposes them through a Gold view.
+
+### Implementation Completed
+
+1. Created `bronze.order_events` to store incoming event data.
+2. Created `silver.order_events` to store transformed event data with a PostgreSQL timestamp.
+3. Added indexes for order ID, purchase timestamp, and event source.
+4. Implemented `python/ingest_order_events.py` to:
+   - Read incoming CSV files in chunks.
+   - Check required columns and reject blank required values.
+   - Validate purchase timestamps.
+   - Skip duplicate event IDs.
+   - Record the event source and source filename.
+   - Insert records into Bronze using a database transaction.
+5. Implemented `python/simulate_order_events.py` to generate five synthetic events per run and save them as timestamped CSV files.
+6. Implemented `python/run_pipeline.py` to orchestrate ingestion, transformation, and pipeline verification.
+7. Created `sql/16_transform_order_events.sql` to transform Bronze events into Silver.
+8. Created `sql/17_create_order_event_view.sql` to expose Silver events through `gold.vw_order_event_activity`.
+9. Created `sql/18_validate_order_event_pipeline.sql` with 18 numbered SQL validation queries.
+10. Updated `.gitignore` to exclude files inside `data/incoming/`.
+
+### Architecture
+
+Manual CSV or simulated events
+→ Python ingestion
+→ Bronze
+→ SQL transformation
+→ Silver
+→ Gold event activity view
+
+Incoming order events remain separate from historical Olist sales and revenue metrics.
+
+### Results Confirmed
+
+- Bronze events: 26
+- Silver events: 26
+- Gold view events: 26
+- Unique event IDs in Gold: 26
+- Manual CSV events: 2
+- Simulated events: 24
+- Duplicate event IDs were handled without creating duplicate records.
+- A CSV row with a blank required customer ID was rejected.
+- The duplicate-test record was removed after testing.
+- The invalid-input test record was not inserted into Bronze.
+- Python syntax compilation for `python/run_pipeline.py` completed without errors.
+
+### Important Learning
+
+- Bronze preserves incoming timestamp values as text.
+- Silver stores purchase timestamps as PostgreSQL `TIMESTAMP`.
+- A primary key and `ON CONFLICT (event_id) DO NOTHING` help prevent duplicate event insertion.
+- Database transactions help prevent partial ingestion when a file fails during processing.
+- Synthetic events are useful for testing ingestion but are not real historical sales.
+- A Gold view does not automatically update historical sales or revenue metrics.
+
+### Remaining Work
+
+- Run end-to-end tests on the updated `python/run_pipeline.py`.
+- Test duplicate IDs across CSV chunks and additional invalid-input cases.
+- Complete Day 13 pipeline validation.
+- Update and push the learning journal and architecture documentation.
+- Update README on Day 15.
+
+### Git
+
+Implementation files for the incoming order-event pipeline were committed and pushed to GitHub. Documentation changes are pending.
+
+
+## Day 13 — End-to-End Testing and Data Quality
+
+### Objective
+Verify the incoming order-event pipeline from CSV ingestion through Bronze, Silver, and Gold.
+
+### Tests Completed
+
+1. Ran the updated pipeline in simulation mode.
+2. Confirmed five new simulated events were ingested.
+3. Verified the updated pipeline reported zero Bronze events missing from Silver.
+4. Ran manual ingestion using `data/incoming/manual_orders.csv`.
+5. Re-ingested the same manual CSV and confirmed both existing event IDs were skipped.
+6. Created a 1,001-row CSV to test a repeated event ID across separate 1,000-row chunks.
+7. Confirmed 1,000 records were inserted and one duplicate was skipped.
+8. Removed the temporary chunk-test records from Bronze and Silver.
+9. Submitted a CSV containing an invalid timestamp.
+10. Confirmed Python rejected the timestamp and the event was not inserted into Bronze.
+11. Removed the temporary chunk-test and invalid-timestamp CSV files.
+12. Rechecked the final layer counts.
+
+### Final Results
+
+- Bronze: 31 events
+- Silver: 31 events
+- Gold view: 31 events
+- Unique event IDs in Gold: 31
+- Manual events: 2
+- Simulated events: 29
+- Bronze events missing from Silver: 0
+
+### Important Learning
+
+- Database constraints provide protection beyond Python's within-chunk duplicate check.
+- Idempotent ingestion allows the same CSV to be submitted again without inserting duplicate event IDs.
+- Invalid data should be verified as absent from the database after rejection.
+- Temporary test records and files must be cleaned up after testing.
+
+### Remaining Work
+
+- Review any remaining edge cases only if needed.
+- Review FastAPI and the AI insights assistant on Day 14.
+- Update and push documentation with the planned commit.
+- Complete the README and final project review on Day 15.
+
+### Git
+
+Day 12 implementation was pushed to GitHub. Day 13 test results and documentation are pending the next documentation commit.
+
+# Day 14 — Generative AI Assistant Integration
+
+## 1. Objective
+
+The objective of Day 14 was to integrate a genuinely generative AI assistant into the existing AI-Powered E-Commerce Analytics Platform.
+
+Before this work, the project already contained:
+- PostgreSQL schemas: Bronze, Silver and Gold.
+- SQL analytics views.
+- Python analytics functions.
+- Machine-learning analyses for customer segmentation, inactivity risk, review sentiment and sales forecasting.
+- A FastAPI application exposing business KPI endpoints.
+
+The goal was to reuse these existing components rather than rebuild them.
+
+The new assistant connects the existing analytics layer to a generative AI model through the Groq API.
+
+## 2. Architecture Before Implementation
+
+The existing analytics flow was:
+
+1. Historical Olist CSV data was ingested into PostgreSQL.
+2. Data was organized into Bronze, Silver and Gold schemas.
+3. SQL views provided business metrics.
+4. Python functions retrieved these metrics.
+5. FastAPI exposed selected metrics through API endpoints.
+
+The existing KPI endpoints were:
+- `GET /`
+- `GET /kpis/summary`
+- `GET /kpis/categories`
+
+The generative AI assistant was added as an additional capability without replacing these endpoints.
+
+## 3. Why We Chose Direct API Integration
+
+We considered using a locally hosted language model and an external AI service.
+
+A local model would require additional setup and software, which was not preferred for this project.
+
+We selected direct API integration because:
+- The application can call a hosted language model over HTTPS.
+- No additional AI SDK was required.
+- Python's built-in `urllib.request` can send HTTP requests.
+- The existing FastAPI application can expose the AI functionality.
+- The application can provide verified business metrics as context to the model.
+
+This approach requires an internet connection, a valid API key and an available model. Free-tier availability and request limits may change.
+
+## 4. Groq Account and Model Setup
+
+### Step 1: Create access
+
+A GroqCloud account was created, and an API key was generated for the project.
+
+The account's Billing page showed the Free plan at $0.00. The Groq Playground successfully generated a response using the selected model:
+
+`openai/gpt-oss-120b`
+
+The Playground test confirmed that the model could respond to a harmless prompt. It did not, by itself, prove that direct API requests would work.
+
+### Step 2: Store the API key
+
+The API key was stored locally in the project's `.env` file:
+
+`GROQ_API_KEY=your_actual_groq_api_key`
+
+The placeholder above is illustrative. The actual key must remain private.
+
+The key must never be:
+- Hardcoded into Python source code.
+- Committed to GitHub.
+- Included in API responses.
+- Pasted into chat messages or shared screenshots.
+
+The existing `.gitignore` excludes `.env` from version control.
+
+### Step 3: Test direct API access
+
+A temporary test file, `test_groq_api.py`, was created in the project root.
+
+The test used:
+- Python's `json` module to encode the request.
+- Python's `os` module to read the environment variable.
+- `urllib.request` to send the HTTP request.
+- `urllib.error` to handle HTTP errors.
+- `python-dotenv` to load `.env`.
+
+The endpoint was:
+
+`https://api.groq.com/openai/v1/chat/completions`
+
+The selected model was `openai/gpt-oss-120b`.
+
+The first request returned HTTP 403 with error code 1010. Adding the following request header allowed the test to succeed:
+
+`User-Agent: AI-Ecommerce-Analytics/1.0`
+
+The subsequent test returned HTTP 200 and a response beginning with `Groq API`.
+
+This verified that the direct API request could succeed. The initial response did not reproduce the entire requested sentence, so the test was treated as a connectivity check rather than a complete prompt-quality test.
+
+The temporary test file was retained for the time being. Its final repository status and whether it should remain as a permanent test must be reviewed before committing.
+
+## 5. Create `python/ai_assistant.py`
+
+The assistant module was created to separate AI-related logic from the FastAPI entry point.
+
+It contains three main functions.
+
+### 5.1 `get_business_context()`
+
+Purpose: retrieve selected business metrics from the existing analytics layer.
+
+It reuses these functions from `analytics.py`:
+- `get_total_delivered_revenue()`
+- `get_delivered_order_count()`
+- `get_revenue_by_category()`
+
+The returned context includes:
+- Total delivered revenue.
+- Delivered order count.
+- The five highest-revenue categories.
+
+The context is assembled into a Python dictionary.
+
+Revenue values are converted to floating-point numbers, and the delivered order count is converted to an integer. Missing category names are represented as `Unknown category`.
+
+The function reuses existing SQL analytics instead of duplicating database queries in the AI module.
+
+### 5.2 `build_ai_prompt(question, business_context)`
+
+Purpose: prepare the business question and evidence for the generative model.
+
+The function converts the business context dictionary into formatted JSON using:
+
+`json.dumps(business_context, indent=2, ensure_ascii=False)`
+
+The prompt instructs the model to:
+- Use the supplied evidence for factual claims.
+- Avoid inventing figures.
+- Distinguish measured facts from possible explanations.
+- Acknowledge insufficient evidence.
+- Give practical recommendations when appropriate.
+- Treat revenue as Brazilian reais (BRL).
+
+This is an example of prompt engineering: defining the model's role, supplying relevant context and setting response constraints.
+
+These instructions improve the chances of a grounded answer but do not guarantee factual accuracy.
+
+### 5.3 `ask_ai(question)`
+
+Purpose: orchestrate the complete AI request.
+
+The function:
+1. Reads `GROQ_API_KEY` from the environment.
+2. Checks that the key exists.
+3. Retrieves business context.
+4. Builds the prompt.
+5. Creates the request payload.
+6. Sends an HTTPS POST request to Groq.
+7. Parses the JSON response.
+8. Extracts the model-generated answer.
+9. Returns the question, answer, business context and model identifier.
+
+The request includes:
+- The model identifier.
+- A system message defining the assistant's role.
+- A user message containing the question and business evidence.
+- `temperature` set to `0.2`.
+- `max_completion_tokens` set to `800`.
+
+A lower temperature generally encourages less variable responses, but it does not ensure that an answer is correct.
+
+The request also includes the Authorization header:
+
+`Authorization: Bearer <API_KEY>`
+
+The actual API key is read from the environment and is not written into the source code.
+
+The request timeout is 60 seconds.
+
+### 5.4 Error handling
+
+The function handles several failure cases:
+- Missing API key.
+- HTTP 429 rate limiting.
+- Other HTTP errors.
+- Network connection errors.
+- Unexpected or malformed API responses.
+- Empty model answers.
+
+The API key is not included in error messages.
+
+The initial version maps rate limits and other handled provider errors into controlled application errors. More detailed retry logic and monitoring can be considered later if necessary.
+
+## 6. Update `python/main.py`
+
+The existing FastAPI entry point was updated rather than replaced with a separate application.
+
+The following imports were added:
+
+- `BaseModel` and `Field` from Pydantic.
+- `ask_ai` from `ai_assistant`.
+
+The existing analytics imports and KPI routes were retained.
+
+### 6.1 Request validation with Pydantic
+
+A `QuestionRequest` model was added.
+
+Its `question` field has:
+- Minimum length: 3 characters.
+- Maximum length: 1,000 characters.
+
+This validates the request before the AI function is called.
+
+### 6.2 Add `POST /ai/ask`
+
+The new endpoint accepts a JSON request containing a question.
+
+Example:
+
+```json
+{
+  "question": "What is the total delivered revenue, and how many delivered orders do we have? Give a short answer."
+}
+```
+
+The endpoint:
+1. Receives and validates the request.
+2. Removes leading and trailing whitespace.
+3. Calls `ask_ai()`.
+4. Returns the result as JSON.
+5. Converts handled assistant errors into an HTTP 502 response.
+6. Returns a generic HTTP 500 response for other unexpected errors.
+
+The existing KPI endpoints remain available.
+
+FastAPI's automatic API documentation at `/docs` exposes the new endpoint for interactive testing.
+
+## 7. End-to-End Request Flow
+
+The completed flow is:
+
+1. The user submits a question through FastAPI.
+2. Pydantic validates the request.
+3. The `/ai/ask` endpoint calls `ask_ai()`.
+4. `ask_ai()` calls the existing analytics functions.
+5. The analytics functions retrieve metrics from PostgreSQL.
+6. The assistant constructs a business context and prompt.
+7. The question and selected aggregate metrics are sent to Groq.
+8. Groq generates a natural-language answer.
+9. FastAPI returns the answer together with the question, business context and model identifier.
+
+This is a retrieval-and-generation pattern: the application retrieves relevant business evidence before asking the language model to explain it.
+
+It is not a model trained on the Olist dataset. The model generates responses using the context provided in each request.
+
+## 8. Testing and Observed Results
+
+### Test 1: API connectivity
+
+The initial direct request returned HTTP 403 with error code 1010.
+
+After adding the `User-Agent` header, the direct request succeeded.
+
+Result: connectivity test passed.
+
+### Test 2: Revenue and order count
+
+Question:
+
+```text
+What is the total delivered revenue, and how many delivered orders do we have? Give a short answer.
+```
+
+Observed HTTP status: `200`
+
+Observed response:
+
+- Total delivered revenue: BRL 13,221,498.11.
+- Delivered orders: 96,478.
+
+These values matched the existing project analytics results.
+
+Result: passed.
+
+### Test 3: Category analysis and recommendations
+
+The assistant was asked to identify the highest-revenue category among the five supplied categories and recommend a business action without claiming unsupported trends or causes.
+
+Observed HTTP status: `200`
+
+The assistant identified:
+- Category: `health_beauty`
+- Revenue: BRL 1,233,131.72
+
+It also generated recommendations involving cross-selling, promotions and KPI monitoring.
+
+Result: the assistant generated a relevant answer using the supplied category figures.
+
+Important limitation: the data supplied in this request contained category revenue values, not customer-level behavior, conversion rates or repeat-purchase evidence. Suggestions concerning those factors remain hypotheses until independently tested.
+
+### Test 4: Invalid question
+
+The request was:
+
+```json
+{
+  "question": "?"
+}
+```
+
+Observed HTTP status: `422`
+
+FastAPI returned a validation error indicating that the question must contain at least three characters.
+
+Result: passed. This request was rejected by validation before the AI function was called.
+
+## 9. Security and Privacy Considerations
+
+The API key remains in `.env`.
+
+The current assistant sends the user's question and selected aggregate business metrics to Groq. It does not need to send raw customer reviews for its current functionality.
+
+Future enhancements must continue to minimize the data sent to the external model.
+
+Additional considerations:
+- Validate user inputs.
+- Avoid returning internal exception details unnecessarily.
+- Monitor rate limits and API failures.
+- Keep credentials out of source control.
+- Check provider data-handling terms before sending additional data.
+- Avoid treating model-generated recommendations as verified business facts.
+- Consider authentication and rate limiting before exposing the API publicly.
+
+The current API runs locally. Public deployment and production security have not been established by these tests.
+
+## 10. Current Limitations
+
+1. The assistant has access only to the metrics included in `get_business_context()`.
+2. It cannot reliably answer arbitrary business questions requiring data that has not been retrieved.
+3. It does not currently execute arbitrary SQL generated by the model.
+4. It does not have semantic search over customer reviews.
+5. It does not provide guaranteed factual answers merely because a prompt includes accuracy instructions.
+6. Free-tier model access and request limits may change.
+7. API availability depends on the external provider and internet connectivity.
+8. Recommendations about customer behavior or causes require additional evidence.
+9. Error handling has been tested only for the cases recorded above; further failure testing is still useful.
+
+## 11. Interview Preparation — Questions to Practise
+
+### Q1. Why did you integrate a generative AI model into the analytics platform?
+
+The platform already contained business metrics and machine-learning analyses. Generative AI adds a natural-language interface that can explain selected metrics and produce readable summaries and recommendations.
+
+### Q2. Why did you use an external API instead of training your own model?
+
+Training a language model was outside the project's scope and would require substantially more resources. The API allowed us to integrate a pre-existing generative model while retaining our own data pipeline, analytics and application logic.
+
+### Q3. How does the model get business data?
+
+The FastAPI endpoint calls Python analytics functions. Those functions query existing PostgreSQL analytics views. The selected results are converted into structured context and included in the model request.
+
+### Q4. Why not let the model invent or calculate every metric itself?
+
+The database and analytics functions are the source of truth for business figures. Supplying verified metrics reduces reliance on the language model to calculate or invent numerical results.
+
+### Q5. Does prompt engineering eliminate hallucinations?
+
+No. Prompt instructions can reduce some undesirable behavior, but the model can still make unsupported claims. Answers must be checked against the returned evidence, and unsupported questions should be handled explicitly.
+
+### Q6. What is the difference between machine learning and generative AI in this project?
+
+The existing classification, clustering and forecasting analyses use machine-learning methods to find patterns or produce predictions. The generative model creates natural-language responses based on the supplied question and evidence.
+
+### Q7. How did you validate the API?
+
+I tested direct API connectivity, submitted a KPI question through FastAPI, tested a category-recommendation question and submitted an invalid question to verify request validation. The two business questions returned HTTP 200, and the invalid question returned HTTP 422.
+
+### Q8. How are API credentials protected?
+
+The key is stored in the local `.env` file, loaded through environment configuration and used in the Authorization header. It is not hardcoded into the Python source or returned to the client.
+
+### Q9. Why use FastAPI?
+
+FastAPI exposes the analytics and AI functions through HTTP endpoints, validates requests with Pydantic and automatically provides interactive API documentation.
+
+### Q10. Is the assistant production-ready?
+
+No. The local end-to-end workflow has been tested, but public deployment, authentication, rate limiting, broader failure testing, monitoring and stronger evaluation of generated answers remain future work.
+
+## 12. Day 14 Summary
+
+Implemented:
+- Direct Groq API access using Python's built-in HTTP functionality.
+- `python/ai_assistant.py` for context retrieval, prompt construction and model invocation.
+- `POST /ai/ask` in the existing FastAPI application.
+- Request validation and basic error handling.
+- Successful KPI and category-question tests.
+- Validation of a too-short question.
+
+The existing SQL analytics and KPI endpoints were reused.
+
+The README has not been updated because the project plan reserves its final update for Day 15.
+
+Before committing, review the Git changes, verify that `.env` is not staged, and decide whether the temporary `test_groq_api.py` should remain as a permanent test.

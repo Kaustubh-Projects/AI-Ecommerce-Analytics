@@ -577,3 +577,168 @@ Improve evaluation and compare baselines before promoting the model to a downstr
 Both features are Python analytical components that read from PostgreSQL and produce generated outputs. They do not require changes to the Bronze, Silver, or Gold schemas.
 
 The sentiment and forecasting outputs can later be integrated into FastAPI and the AI Insights Assistant after their quality and limitations are documented.
+
+
+## Incoming Order Event Pipeline
+
+### Purpose
+
+Accept manually supplied CSV order events and simulated events without modifying the existing historical Olist sales pipeline.
+
+### Data Flow
+
+Manual CSV / Event Simulator
+        |
+        v
+Python Ingestion
+        |
+        v
+Bronze: bronze.order_events
+        |
+        v
+SQL Transformation
+(sql/16_transform_order_events.sql)
+        |
+        v
+Silver: silver.order_events
+        |
+        v
+Gold View: gold.vw_order_event_activity
+
+### Components
+
+| Component | Responsibility |
+|---|---|
+| `python/ingest_order_events.py` | Validate CSV input and insert events into Bronze |
+| `python/simulate_order_events.py` | Generate synthetic order-event CSV files |
+| `python/run_pipeline.py` | Coordinate ingestion, transformation, and verification |
+| `sql/15_create_order_event_tables.sql` | Create Bronze and Silver event tables and indexes |
+| `sql/16_transform_order_events.sql` | Convert Bronze timestamps and insert records into Silver |
+| `sql/17_create_order_event_view.sql` | Create the Gold event activity view |
+| `sql/18_validate_order_event_pipeline.sql` | Store SQL validation queries |
+
+### Layer Responsibilities
+
+**Bronze**
+- Stores incoming event fields.
+- Keeps the original purchase timestamp as text.
+- Records the event source and source filename.
+- Uses `event_id` as the primary key.
+
+**Silver**
+- Stores purchase timestamps as PostgreSQL `TIMESTAMP`.
+- Preserves event source and file metadata.
+- Uses `event_id` as the primary key.
+
+**Gold**
+- Exposes Silver events through `gold.vw_order_event_activity`.
+- Provides event activity for inspection and downstream use.
+- Remains separate from historical sales and revenue views.
+
+### Data Quality and Duplicate Handling
+
+- Python checks required columns and rejects blank required values.
+- Python validates timestamp parsing before ingestion.
+- Duplicate IDs within a CSV chunk are removed.
+- PostgreSQL skips event IDs already present in Bronze.
+- The transformation skips event IDs already present in Silver.
+- SQL validation queries are maintained in the repository.
+
+### Current Limitations
+
+- Simulated events do not necessarily correspond to real Olist customers or orders.
+- The event pipeline does not automatically update historical sales and revenue metrics.
+- The updated pipeline's end-to-end behavior still requires Day 13 testing.
+- Broader support for arbitrary external datasets remains a future enhancement.
+
+# Architecture Decision — Direct Generative AI API Integration
+
+## Decision
+
+Integrate a hosted generative AI model through a direct HTTPS API call from the existing FastAPI application.
+
+The initial provider is GroqCloud, using the model `openai/gpt-oss-120b`.
+
+The integration reuses existing PostgreSQL analytics functions and does not introduce an additional AI SDK.
+
+## Context
+
+The project already contains a PostgreSQL warehouse, SQL analytics views, Python analytics functions, machine-learning analyses and a FastAPI application.
+
+A generative AI assistant was required to answer business questions in natural language using verified project metrics.
+
+The implementation needed to avoid additional local model installations and unnecessary Python dependencies.
+
+## Design
+
+- `python/analytics.py` remains responsible for retrieving the existing business metrics.
+- `python/ai_assistant.py` retrieves the selected metrics, constructs the prompt, calls Groq and processes the generated response.
+- `python/main.py` exposes the functionality through `POST /ai/ask`.
+- `.env` stores the API key locally.
+- `.gitignore` excludes `.env` from version control.
+
+The first version supplies total delivered revenue, delivered order count and the top five categories by revenue.
+
+The model receives the user's question and selected aggregate business context. It does not receive raw customer reviews in this implementation.
+
+## Rationale
+
+1. Reuses existing SQL and Python analytics instead of duplicating them.
+2. Keeps business data retrieval separate from natural-language generation.
+3. Avoids training or hosting a language model locally.
+4. Uses Python's built-in `urllib.request` instead of adding an AI SDK.
+5. Exposes the assistant through the existing FastAPI application.
+6. Uses Pydantic to validate incoming questions.
+
+## Alternatives Considered
+
+### Local language model
+
+Not selected for the initial implementation because it would require additional local setup and software.
+
+### Rule-based responses only
+
+Not selected as the final goal because predefined rules alone do not provide genuinely generative answers to natural-language business questions.
+
+### External API through an additional SDK
+
+Not selected because a direct HTTPS request can perform the required operation without adding another package.
+
+## Security and Privacy
+
+The API key is stored in `.env` and must not be committed to Git.
+
+Only selected aggregate metrics and the user's question are sent to the provider. Raw customer review text is not needed for the current assistant functionality.
+
+Provider terms, data handling, rate limits and free-tier availability must be reviewed before expanding the data sent to the model.
+
+## Trade-offs
+
+Advantages:
+- Minimal additional dependencies.
+- Natural-language answers.
+- Reuse of the existing analytics layer.
+- Simple integration with FastAPI.
+
+Disadvantages:
+- Requires internet access and an available external service.
+- Subject to provider rate limits and availability.
+- Introduces external data-processing considerations.
+- Generated answers may contain unsupported claims.
+- The first version supports only the metrics explicitly retrieved by the application.
+
+## Validation
+
+The following tests succeeded:
+- Direct Groq API connectivity after adding a User-Agent header.
+- KPI question returned HTTP 200.
+- Category analysis question returned HTTP 200.
+- Too-short question returned HTTP 422 through FastAPI validation.
+
+These results confirm the tested local workflow, not production readiness.
+
+## Status
+
+Implemented and locally tested.
+
+Future decisions may cover broader metric retrieval, answer evaluation, authentication, rate limiting, monitoring and deployment security.
