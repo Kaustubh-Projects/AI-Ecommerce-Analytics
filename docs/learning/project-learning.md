@@ -3374,3 +3374,19 @@ The existing SQL analytics and KPI endpoints were reused.
 The README has not been updated because the project plan reserves its final update for Day 15.
 
 Before committing, review the Git changes, verify that `.env` is not staged, and decide whether the temporary `test_groq_api.py` should remain as a permanent test.
+
+### Test 5: Question requiring unavailable evidence
+
+Question:
+
+"Why did revenue decline in September 2018, and what caused the decline?"
+
+Observed HTTP status: `200`
+
+The assistant stated that the supplied evidence did not include monthly revenue trends or data specific to September 2018. It did not claim that a decline had occurred or assert a cause.
+
+The assistant recommended obtaining monthly revenue and order-count figures, comparing category performance, and investigating operational or marketing metrics before performing root-cause analysis.
+
+Result: passed. The assistant acknowledged the limits of its supplied evidence rather than inventing a factual explanation.
+
+Limitation: this was a qualitative behavior check, not a comprehensive hallucination or factuality evaluation.
