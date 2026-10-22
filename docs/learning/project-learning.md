@@ -3390,3 +3390,655 @@ The assistant recommended obtaining monthly revenue and order-count figures, com
 Result: passed. The assistant acknowledged the limits of its supplied evidence rather than inventing a factual explanation.
 
 Limitation: this was a qualitative behavior check, not a comprehensive hallucination or factuality evaluation.
+
+# Final Project Review and Reconciled Learning Record
+
+**Project:** AI-Powered E-Commerce Analytics Platform
+**Review milestone:** Day 15 — Final Project Review and Documentation
+**Primary dataset:** Brazilian E-Commerce Public Dataset by Olist
+**Database:** PostgreSQL — `ecommerce_analytics`
+**Main technologies:** Python, SQL, PostgreSQL, Power BI, Scikit-learn, FastAPI, Groq API and Generative AI
+
+---
+
+## 1. Purpose of the Final Review
+
+This section consolidates the final implementation, technical decisions, verified results, and known limitations of the project developed from Day 1 onward.
+
+The earlier daily entries preserve the original learning process. Some plans changed as the project developed, and some features were implemented in later milestones. This final review is the authoritative summary of the resulting architecture.
+
+The purpose is to distinguish clearly between:
+
+- Features that were implemented and tested.
+- Analytical experiments and their measured results.
+- Components that exist separately rather than forming one automated workflow.
+- Planned improvements that have not yet been implemented.
+- Historical observations that must not be presented as current business data.
+
+The project demonstrates an end-to-end analytics workflow. It should not be described as a fully deployed production system or as a completely real-time platform.
+
+## 2. Final Project Objective
+
+The objective was to build a practical e-commerce analytics platform that transforms historical transactional data into business insights and demonstrates the integration of data engineering, SQL analytics, business intelligence, machine learning, API development, and Generative AI.
+
+The platform was developed to support:
+
+1. Sales and revenue analysis.
+2. Customer behavior and RFM analysis.
+3. Customer segmentation experiments.
+4. Customer inactivity-risk analysis.
+5. Product and seller performance analysis.
+6. Delivery and operational performance analysis.
+7. Review sentiment classification.
+8. Baseline sales forecasting.
+9. Interactive Power BI reporting.
+10. API-based access to selected business metrics.
+11. Natural-language answers to supported business questions.
+12. A separate workflow for ingesting simulated and manually supplied order events.
+
+The project uses historical Olist data, primarily from 2016–2018. Its results describe the available historical dataset and are not evidence of current e-commerce market performance.
+
+## 3. Final Architecture
+
+The final system contains two related but distinct workflows.
+
+### 3.1 Historical analytics workflow
+
+Historical Olist CSV files
+→ Python Bronze ingestion
+→ PostgreSQL Bronze schema
+→ SQL transformations and validation
+→ PostgreSQL Silver schema
+→ Gold analytical tables and views
+→ Python analytics functions
+→ Power BI dashboards and selected FastAPI endpoints
+→ Groq-powered AI assistant using retrieved business evidence
+
+### 3.2 Incoming order-event workflow
+
+Simulated order events or manually supplied CSV files
+→ Python event ingestion
+→ PostgreSQL Bronze event table
+→ SQL transformation
+→ PostgreSQL Silver event table
+→ Gold order-event activity view
+
+**Important architectural decision:** The incoming order-event workflow is separate from the historical sales analytics workflow. The synthetic and manually supplied events are not automatically combined with the original Olist sales data, and they do not automatically update the existing historical revenue metrics or Power BI dashboards.
+
+These two workflows must not be described as one fully integrated real-time analytics pipeline.
+
+## 4. PostgreSQL Database Architecture
+
+The project uses one PostgreSQL database, `ecommerce_analytics`, with three principal schemas.
+
+### Bronze schema
+
+Purpose: preserve ingested source data and provide ingestion traceability.
+
+The historical ingestion process loads nine source CSV files into Bronze tables. Source values are initially preserved in text form, with ingestion metadata and a technical row identifier.
+
+The historical ingestion process also records batch information, including file fingerprints, status, row counts, timestamps, and error information.
+
+The separate incoming-event workflow uses its own Bronze event table.
+
+### Silver schema
+
+Purpose: store standardized data with suitable data types, key constraints, and validated relationships.
+
+Silver contains the nine historical Olist tables:
+
+- `silver.orders`
+- `silver.customers`
+- `silver.order_items`
+- `silver.products`
+- `silver.sellers`
+- `silver.order_payments`
+- `silver.order_reviews`
+- `silver.category_translation`
+- `silver.geolocation`
+
+It also contains the separate `silver.order_events` table for incoming order events.
+
+Important decisions include:
+
+- Use primary keys appropriate to each table's row grain.
+- Use composite keys where one business identifier is not sufficient.
+- Preserve missing source values unless a justified rule says otherwise.
+- Use appropriate date, numeric, and identifier data types.
+- Add foreign keys after checking relationships.
+- Retain repeated review identifiers because the source investigation found they were not unique.
+- Avoid using geolocation ZIP prefixes as unique keys because multiple records can share the same prefix.
+- Keep `ingested_at` separate from `silver_processed_at`.
+
+### Gold schema
+
+Purpose: provide analytics-ready datasets for business reporting and reusable queries.
+
+The historical analytical layer includes eight Gold tables and six analytical views:
+
+- `gold.vw_sales_performance`
+- `gold.vw_delivery_performance`
+- `gold.vw_customer_rfm`
+- `gold.vw_product_performance`
+- `gold.vw_seller_performance`
+- `gold.vw_customer_satisfaction_repurchase`
+
+The separate incoming-event workflow exposes event activity through:
+
+- `gold.vw_order_event_activity`
+
+Gold views simplify repeatable business analysis and help provide consistent metric definitions to downstream components.
+
+### Why use three schemas?
+
+The Bronze, Silver, and Gold structure separates source preservation, standardization, and business analytics. It improves organization and traceability without requiring three separate databases.
+
+A schema by itself does not guarantee data quality. Validation queries, appropriate constraints, and correct transformation logic are still required.
+
+## 5. Historical Dataset and Ingestion Results
+
+Nine historical CSV files were ingested into the Bronze layer.
+
+| Bronze table | Rows |
+|---|---:|
+| `bronze.customers` | 99,441 |
+| `bronze.geolocation` | 1,000,163 |
+| `bronze.order_items` | 112,650 |
+| `bronze.order_payments` | 103,886 |
+| `bronze.order_reviews` | 99,224 |
+| `bronze.orders` | 99,441 |
+| `bronze.products` | 32,951 |
+| `bronze.sellers` | 3,095 |
+| `bronze.category_translation` | 71 |
+| **Total** | **1,758,922** |
+
+The total includes more than one million geolocation records. It is the combined number of rows across nine datasets, not the number of orders.
+
+The nine corresponding historical Silver tables were loaded and validated against their expected row counts during implementation.
+
+### Important data-quality findings
+
+- The source orders dataset contains 99,441 rows.
+- The source contains 96,478 orders marked as delivered.
+- The original investigation found missing values in several delivery-related timestamp fields.
+- Two orders marked as delivered lacked a customer delivery timestamp in the final Silver investigation described in the project records.
+- The source contains missing product-category and descriptive information.
+- Review identifiers are repeated, so review IDs cannot automatically be treated as unique.
+- Geolocation ZIP prefixes are not unique.
+- Some date-sequence and payment-related anomalies require careful interpretation.
+
+These findings informed schema design, validation, and analytical decisions. They do not establish the cause of every anomaly.
+
+### Important learning
+
+A successful CSV load and a matching row count do not prove that all source records are correct. Data quality requires separate checks for missing values, uniqueness, relationships, valid data types, and business rules.
+
+## 6. Final Decision: Python Versus SQL
+
+During the early database-design phase, a question arose about why data transformations were being performed in SQL when Python and Pandas could also perform many of the same operations.
+
+The final decision was to choose the technology based on the task rather than to use both technologies unnecessarily.
+
+**SQL is used for:**
+
+- Database-side transformations.
+- Joins, aggregations, and analytical views.
+- Relational constraints.
+- Database validation queries.
+- Transformations between database layers.
+
+**Python is used for:**
+
+- CSV ingestion and pipeline orchestration.
+- File hashing and ingestion tracking.
+- Exploratory data analysis.
+- Reusable database analytics functions.
+- Machine-learning experiments.
+- Review text processing.
+- Forecasting.
+- Simulated event generation and event ingestion.
+- FastAPI and Generative AI integration.
+
+Python can also clean data before loading it into SQL in a different workflow. However, that is an alternative implementation approach, not the architecture adopted for the main historical pipeline.
+
+There is no need to undo the existing SQL transformations simply to move them to Python. Future transformations should use the tool best suited to the requirement and should not duplicate work without a clear reason.
+
+## 7. Gold Analytics and Business Rules
+
+The Gold layer supports sales, delivery, customer, product, seller, and satisfaction-related analysis.
+
+Important rules include:
+
+- Item `price` represents item revenue; `freight_value` is treated separately.
+- Revenue calculations use the appropriate order-status and metric filters.
+- Distinct counts are required when counting unique business entities.
+- A grouped order count must not automatically be summed across multiple dimensions and treated as a distinct order total.
+- Review scores 4–5 are classified as satisfied, 3 as neutral, and 1–2 as dissatisfied for the implemented analysis.
+- Customer RFM segments are based on recency, frequency, and monetary value.
+- A customer who does not repurchase during the available historical window cannot automatically be classified as someone who will never return.
+- Review-level associations with individual products require caution because an order may contain multiple products while the review is associated with the order.
+- A correlation or association does not establish causation.
+
+### Verified historical metrics
+
+| Metric | Recorded result |
+|---|---:|
+| Delivered item revenue | BRL 13,221,498.11 |
+| Delivered orders | 96,478 |
+| Highest-revenue category in the recorded analysis | `health_beauty` |
+| Recorded revenue for `health_beauty` | BRL 1,233,131.72 |
+
+Other high-revenue categories in the recorded analysis included `watches_gifts`, `bed_bath_table`, `sports_leisure`, and `computers_accessories`.
+
+These are historical dataset results. Revenue represents item revenue under the project's metric definition, not necessarily total customer payments including freight or every other possible financial adjustment.
+
+## 8. Power BI Implementation
+
+The Power BI report is stored at the project root as:
+
+`AI_Ecommerce_Analytics.pbix`
+
+The report contains four pages.
+
+### Page 1 — Executive Overview
+
+Provides high-level business performance metrics, including revenue, order-related KPIs, monthly revenue trends, and category performance.
+
+### Page 2 — Customer Analytics
+
+Supports customer behavior analysis, repeat-purchase metrics, RFM segments, and satisfaction-related analysis.
+
+### Page 3 — Delivery & Operations
+
+Focuses on delivery outcomes, punctuality, delivery rates, and delivery duration.
+
+### Page 4 — Product & Seller Performance
+
+Supports analysis of product performance, category performance, seller comparisons, delivery volume, and late-order rates.
+
+### Power BI learning
+
+The report demonstrates the importance of choosing the correct source, aggregation, filters, relationships, and visual for each business question.
+
+The grain of the underlying data must be understood before using counts or sums. A visual can look correct while still showing a misleading number if the underlying metric is defined incorrectly.
+
+The report is based on the historical analytical dataset. Automatic refresh from the separate incoming order-event pipeline has not been implemented as part of the recorded architecture.
+
+## 9. Python Analytics Integration
+
+The project includes `python/analytics.py`, which provides reusable functions to retrieve selected business metrics from PostgreSQL.
+
+The recorded functions include:
+
+- `get_total_delivered_revenue()`
+- `get_revenue_by_category()`
+- `get_delivered_order_count()`
+
+These functions are reused by the FastAPI application and the AI assistant.
+
+The recorded delivered revenue and delivered-order count were compared with the corresponding SQL analytics results.
+
+**Learning:** Reusable analytics functions avoid duplicating the same database logic in every application component and provide a consistent source for the metrics they expose.
+
+## 10. Machine-Learning Experiments
+
+Machine learning was introduced after the main historical database and analytical layers were available.
+
+These are experimental models and analytical baselines, not all production-ready predictive systems.
+
+### 10.1 Customer segmentation
+
+Script: `python/customer_segmentation.py`
+
+Method: K-Means clustering.
+
+Recorded configuration and result:
+
+- Number of clusters: 2.
+- Silhouette score: approximately 0.7418.
+
+The silhouette score indicates separation under the chosen features and configuration. It does not independently prove that the two groups are commercially meaningful. Business interpretation and stability checks are still important.
+
+RFM segmentation and K-Means clustering are different approaches. RFM uses business-defined scoring rules, while K-Means groups records based on feature-space similarity.
+
+### 10.2 Customer inactivity-risk model
+
+Script: `python/inactivity_risk_model.py`
+
+Prediction script: `python/predict_inactivity_risk.py`
+
+The model was implemented as an experiment to identify customer inactivity risk.
+
+The recorded evaluation showed weak performance for the evaluated active class, including approximately:
+
+- Recall: 0.54.
+- Precision: 0.01.
+
+The low precision means that many records flagged by the model were false positives under the evaluation definition.
+
+The model must not be presented as a reliable production churn or inactivity system without further work on label definitions, features, class imbalance, evaluation, and business usefulness.
+
+### 10.3 Review sentiment classification
+
+Script: `python/review_sentiment_analysis.py`
+
+The experiment used TF-IDF text features and Logistic Regression to classify review sentiment using review-score-derived labels.
+
+Recorded evaluation:
+
+- Accuracy: approximately 0.79.
+- Macro F1-score: approximately 0.67.
+- Neutral-class F1-score: approximately 0.31.
+
+The labels are derived from review scores, which are proxies for sentiment rather than perfect independent ground truth. Missing review text and class imbalance also limit interpretation.
+
+The model demonstrates a working text-classification experiment, but the neutral class and label quality require further investigation.
+
+### 10.4 Sales forecasting
+
+Script: `python/sales_forecasting.py`
+
+The forecasting experiment used a baseline method and chronological evaluation.
+
+Recorded evaluation:
+
+- MAE: approximately 68,365.41.
+- RMSE: approximately 78,642.62.
+
+MAE measures average absolute prediction error. RMSE gives greater weight to larger errors.
+
+The evaluation used only five test observations, so the result is limited and should not be treated as evidence of a robust forecasting model. A more comprehensive evaluation and comparison with stronger baselines are future improvements.
+
+### Overall machine-learning conclusion
+
+The project demonstrates the process of preparing data, implementing models, evaluating results, and recognizing limitations. The models should not be described as production-ready merely because the scripts ran successfully.
+
+## 11. Incoming Order-Event Pipeline
+
+The incoming-event pipeline was added separately from the historical Olist workflow.
+
+Relevant files include:
+
+- `python/ingest_order_events.py`
+- `python/simulate_order_events.py`
+- `python/run_pipeline.py`
+- `sql/15_create_order_event_tables.sql`
+- `sql/16_transform_order_events.sql`
+- `sql/17_create_order_event_view.sql`
+- `sql/18_validate_order_event_pipeline.sql`
+
+The workflow accepts simulated or manually supplied CSV event records, validates required fields and timestamps, ingests records into Bronze, transforms records into Silver, and exposes the resulting activity through a Gold view.
+
+### Recorded final validation results
+
+- Bronze events: 31.
+- Silver events: 31.
+- Gold view events: 31.
+- Unique event IDs in Gold: 31.
+- Manual events: 2.
+- Simulated events: 29.
+- Bronze events missing from Silver: 0.
+
+Additional tests covered:
+
+- Re-ingestion of the same manual CSV.
+- Duplicate event IDs across CSV chunks.
+- Invalid timestamps.
+- Rejection of invalid input.
+- Removal of temporary test records and test files.
+
+The repeated-CSV test confirmed that existing event IDs were skipped. The chunk test inserted 1,000 unique records and skipped one duplicate.
+
+### Important learning
+
+- Primary keys and database conflict handling help prevent duplicate insertion.
+- Idempotent ingestion allows the same file to be submitted again without creating duplicate event records.
+- Invalid input should be verified as absent from the database after rejection.
+- Synthetic events are useful for testing pipeline behavior but are not real historical transactions.
+- A Gold event view does not automatically update the historical sales metrics.
+
+The pipeline demonstrates event ingestion and transformation. It should not be described as a deployed streaming system or a real-time update to the historical sales dashboards.
+
+## 12. FastAPI Implementation
+
+The project uses FastAPI to expose selected analytical capabilities through HTTP endpoints.
+
+The recorded endpoints include:
+
+- `GET /`
+- `GET /kpis/summary`
+- `GET /kpis/categories`
+- `POST /ai/ask`
+
+The request body for the AI endpoint contains a question. Pydantic validates the question length before the AI request is made.
+
+FastAPI also provides interactive documentation through:
+
+`http://127.0.0.1:8000/docs`
+
+The address is available when the application is running locally. It is not a public deployment URL.
+
+### Learning
+
+FastAPI provides a convenient way to expose Python functionality as API endpoints. Pydantic request validation helps reject invalid input before performing downstream processing.
+
+The local API tests do not establish that the application is production-ready. Public deployment, authentication, rate limiting, monitoring, and further security testing remain separate tasks.
+
+## 13. Generative AI Assistant
+
+Files:
+
+- `python/ai_assistant.py`
+- `python/main.py`
+- `test_groq_api.py`
+
+The AI assistant uses the Groq API with the model identifier:
+
+`openai/gpt-oss-120b`
+
+The API key is stored in the local `.env` file as `GROQ_API_KEY`. It must not be hardcoded in source code, committed to GitHub, or included in screenshots or shared documentation.
+
+The assistant reuses the existing analytics functions to retrieve selected evidence:
+
+- Total delivered revenue.
+- Delivered-order count.
+- Revenue for the five highest-revenue categories.
+
+The application then constructs a prompt containing the question and this evidence, calls the external model, and returns the generated answer through FastAPI.
+
+### Recorded tests
+
+**KPI question:** Returned HTTP 200 and included BRL 13,221,498.11 delivered revenue and 96,478 delivered orders.
+
+**Category question:** Returned HTTP 200 and identified `health_beauty` with recorded revenue of BRL 1,233,131.72.
+
+**Invalid question:** A question shorter than the minimum required length returned HTTP 422.
+
+**Question requiring unavailable evidence:** When asked why revenue declined in September 2018, the assistant acknowledged that the supplied context did not establish a monthly decline or its cause.
+
+The last test is important because the assistant should not invent a cause when the required evidence has not been retrieved.
+
+### Final capability boundary
+
+The AI assistant answers questions using the evidence supplied by the current analytics functions. It does not have unrestricted access to every table or metric in the database, and it does not execute arbitrary SQL generated by the model.
+
+It cannot reliably answer a question that requires data it has not retrieved. For example, questions about monthly revenue trends, the cause of a business decline, individual product rankings, or seller-specific metrics require the corresponding analytical functions and evidence to be added.
+
+The implementation is best described as an evidence-grounded Generative AI assistant for selected business metrics. It should not be described as a fully developed vector-search RAG platform or an unrestricted database agent.
+
+### Security and privacy
+
+The current workflow sends the question and selected aggregate business metrics to the external Groq service. It does not need to send raw customer reviews for its current functionality.
+
+Before adding new AI features, the project should continue to minimize external data sharing, protect credentials, validate inputs, and review the provider's data-handling terms.
+
+## 14. Final Project File Organization
+
+The repository is organized around the following responsibilities.
+
+### `python/`
+
+Contains the historical ingestion process, dataset inspection and exploration, database connection test, reusable analytics functions, machine-learning experiments, event-processing scripts, FastAPI application, and AI assistant.
+
+Important files include:
+
+- `environment_check.py`
+- `inspect_dataset.py`
+- `analyze_orders.ipynb`
+- `analyze_orders.py`
+- `test_db_connection.py`
+- `ingest_bronze.py`
+- `analytics.py`
+- `customer_segmentation.py`
+- `inactivity_risk_model.py`
+- `predict_inactivity_risk.py`
+- `review_sentiment_analysis.py`
+- `sales_forecasting.py`
+- `ingest_order_events.py`
+- `simulate_order_events.py`
+- `run_pipeline.py`
+- `main.py`
+- `ai_assistant.py`
+
+The notebook is the interactive exploration workspace. `analyze_orders.py` is retained separately for now; its role should be reviewed before deleting it or expanding it into a duplicate implementation.
+
+### `sql/`
+
+Contains organized, version-controlled SQL scripts for database creation, transformation, validation, analytics, and the incoming-event workflow.
+
+The SQL work is organized in numbered files from `01_create_bronze_tables.sql` through `18_validate_order_event_pipeline.sql`.
+
+New SQL queries must be saved in the appropriate `.sql` file under `sql/`. They must not be left only in pgAdmin Query Tool history.
+
+Before ending a SQL work session, identify which SQL files need to be created or updated and include them in the Git review and commit workflow.
+
+### `docs/`
+
+Contains the project learning journal, architecture decisions, and AI assistant question guide.
+
+- `docs/learning/project-learning.md` — the day-by-day learning record.
+- `docs/architecture-decisions.md` — significant architectural decisions and their reasoning.
+- `docs/ai-assistant-questions.md` — supported question types, unsupported question types, and the assistant's current boundaries.
+
+The personal interview explanation, resume wording, and LinkedIn post are personal career-preparation materials and do not need to be added to the technical project documentation.
+
+### Other important files
+
+- `.env` — local credentials and configuration; must remain private.
+- `.gitignore` — excludes sensitive files and selected generated or local data.
+- `AI_Ecommerce_Analytics.pbix` — Power BI report.
+- `README.md` — repository overview and setup documentation.
+- `test_groq_api.py` — direct Groq API connectivity test.
+- `screenshots/` — intended location for selected project screenshots.
+
+Generated data, temporary test files, API keys, credentials, and other private material must not be committed unintentionally.
+
+## 15. Final Technical Decisions That Supersede Earlier Plans
+
+The following decisions are authoritative when earlier notes describe a different plan.
+
+### Decision 1: One database with three schemas
+
+**Final decision:** Use `ecommerce_analytics` with Bronze, Silver, and Gold schemas.
+
+The layers are schemas in one PostgreSQL database, not three separate databases.
+
+### Decision 2: Select Python or SQL based on the task
+
+**Final decision:** Do not move existing SQL transformations to Python merely to demonstrate Pandas, and do not force every transformation into SQL. Choose the implementation that fits the task.
+
+### Decision 3: Preserve historical data and document anomalies
+
+**Final decision:** Do not automatically delete missing, duplicated, or anomalous source records without a justified rule. Investigate anomalies and document the decisions.
+
+### Decision 4: Keep RFM, clustering, inactivity risk, sentiment, and forecasting distinct
+
+**Final decision:** RFM is rule-based customer analysis; K-Means is clustering; inactivity risk is a predictive classification experiment; sentiment analysis is text classification; sales forecasting is a time-based prediction task.
+
+They are not interchangeable methods, and their results must be interpreted using their respective definitions and evaluation metrics.
+
+### Decision 5: Keep the incoming-event pipeline separate
+
+**Final decision:** Simulated and manually supplied order events have their own ingestion and transformation workflow. They are not automatically merged with historical Olist sales data or the existing Power BI report.
+
+### Decision 6: Keep the AI assistant evidence-bound
+
+**Final decision:** The AI assistant receives selected metrics from existing analytics functions. It does not have unrestricted access to every business metric, does not generate arbitrary SQL for execution, and must acknowledge when the supplied evidence is insufficient.
+
+### Decision 7: Do not claim production deployment
+
+**Final decision:** The project has a tested local FastAPI application and external Groq API integration. Public cloud deployment, production security, and automated integration of incoming events into the historical reporting pipeline are not established by the recorded work.
+
+### Decision 8: Keep SQL version-controlled
+
+**Final decision:** Every SQL query used for project work must be saved in an organized `.sql` file in the repository's `sql/` directory and reviewed through Git.
+
+### Decision 9: Protect secrets and sensitive data
+
+**Final decision:** Keep `.env` and API keys private. Review staged files before committing. Do not upload credentials, raw private data, or screenshots containing secrets.
+
+### Decision 10: Separate technical documentation from personal career notes
+
+**Final decision:** The project journal and README should describe the technical implementation. The interview explanation, resume description, and LinkedIn post remain in the user's personal Word document.
+
+## 16. Final Known Limitations
+
+The following limitations remain important when explaining or extending the project.
+
+1. The historical Olist dataset primarily covers 2016–2018.
+2. Source anomalies and missing values require careful interpretation.
+3. The RFM and clustering outputs need business interpretation before they can drive actions.
+4. The inactivity-risk model has very low recorded precision for the evaluated active class.
+5. The neutral sentiment class has a low recorded F1-score.
+6. The forecasting baseline was evaluated on only five test observations.
+7. The AI assistant can answer only questions supported by the context its analytics functions retrieve.
+8. Generative AI can still produce incorrect or unsupported statements.
+9. The incoming-event pipeline is separate from historical sales analytics.
+10. The current API is locally run, not a demonstrated public production deployment.
+11. Production authentication, rate limiting, monitoring, and broader failure testing remain potential improvements.
+12. Automated refresh of the existing Power BI report from incoming events has not been established.
+13. The repository and documentation must be checked before public sharing to ensure no secrets or unintended generated files are included.
+
+## 17. Future Enhancements
+
+The following are possible future improvements, not completed features.
+
+- Improve inactivity-risk model labels, features, class balance, and evaluation.
+- Evaluate alternative clustering configurations and assess whether customer segments are actionable.
+- Improve sentiment classification, particularly neutral-class performance.
+- Compare more sophisticated forecasting methods against suitable baselines with a larger chronological test period.
+- Extend the AI assistant with additional validated analytics functions for monthly trends, seller performance, product performance, delivery delays, and customer behavior.
+- Add stronger tests for AI answer grounding and unsupported questions.
+- Integrate incoming order events into the analytical reporting model if unified historical and incoming-event analysis is required.
+- Add authentication, rate limiting, monitoring, and production-grade error handling before public deployment.
+- Improve setup reproducibility by documenting required dependencies and environment configuration.
+- Complete and verify project screenshots, including the Power BI pages, PostgreSQL schema inventory, and FastAPI/AI response.
+- Review and finalize the README so that it describes only implemented and verified features.
+
+## 18. Final Learning Summary
+
+This project progressed from inspecting CSV files to designing a relational database, implementing data layers, developing analytical views, creating Power BI reports, experimenting with machine learning, building an incoming-event workflow, exposing metrics through FastAPI, and integrating a Generative AI assistant.
+
+The most important lessons were:
+
+- Understand the source data and its grain before designing tables or calculating metrics.
+- Use data-quality checks to validate assumptions.
+- Choose SQL and Python based on the task rather than using tools unnecessarily.
+- Keep the raw, standardized, and analytical layers conceptually separate.
+- Validate business metrics independently.
+- Evaluate machine-learning models with suitable metrics and honest limitations.
+- Ground AI answers in retrieved evidence instead of relying on prompt instructions alone.
+- Keep separate pipelines separate until an explicit integration is designed and tested.
+- Save SQL queries in version-controlled files.
+- Protect credentials and verify intended Git changes before committing.
+- Record decisions and corrections so that the project remains understandable after development ends.
+
+## 19. Final Completion Status
+
+The project has implemented the core historical analytics architecture, SQL analytical views, four Power BI report pages, reusable Python analytics, machine-learning experiments, a separate incoming order-event workflow, FastAPI endpoints, and a Groq-powered AI assistant.
+
+The recorded tests support the core behaviors described in this journal. The known model limitations, restricted AI context, separate event pipeline, and local-only application status remain part of the final project description.
+
+The final documentation and repository review should verify that the README reflects the actual implementation, the required files are saved, the screenshots intended for the repository are present, and the Git changes include only the intended project files.
+
+**Final conclusion:** The AI-Powered E-Commerce Analytics Platform is an end-to-end portfolio project demonstrating data engineering, SQL analytics, business intelligence, machine-learning experimentation, API development, and evidence-grounded Generative AI. Its strongest feature is the integration of these components with documented reasoning and testing, while clearly identifying the boundaries of the current implementation.

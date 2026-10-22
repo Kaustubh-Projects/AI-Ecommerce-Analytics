@@ -1,318 +1,527 @@
 # AI-Powered E-Commerce Analytics Platform
 
+An end-to-end e-commerce analytics project combining **Python, SQL, PostgreSQL, Power BI, machine learning, FastAPI, and Generative AI** to analyze historical e-commerce data, explore customer behavior, monitor operational performance, and generate evidence-based business insights.
+
 ## 1. Project Overview
 
-This project aims to build an end-to-end e-commerce analytics
-platform integrating data analytics, data engineering,
-machine learning, natural language processing, and generative AI.
+This project uses the public Brazilian E-Commerce dataset by Olist to build a layered analytics platform. It transforms historical transaction data into business-ready analytical models, interactive Power BI dashboards, and Python-based analytical experiments.
 
-The platform will use historical e-commerce transactions,
-simulated new transaction events, and optional manually
-uploaded CSV files.
+The platform also includes a separate pipeline for simulated and manually supplied order-event CSV files, a FastAPI application for exposing analytics, and a Generative AI assistant that answers natural-language questions using selected business metrics.
 
-It will demonstrate how an e-commerce business can monitor
-sales, understand customer behavior, evaluate operational
-performance, identify customer satisfaction issues, and
-generate data-driven business recommendations.
+The project demonstrates an end-to-end analytics workflow, from data ingestion and SQL transformations to visualization, predictive analytics, and AI-assisted business reporting.
 
-The system will support batch data ingestion and simulated
-near-real-time transaction ingestion.
+**Project status:** Core historical analytics pipeline, Power BI dashboards, machine-learning experiments, order-event ingestion workflow, FastAPI endpoints, and initial AI assistant implemented and locally tested. Documentation and final validation are ongoing.
 
 ## 2. Business Objectives
 
 ### Sales Analytics
-- Analyze revenue and order performance.
-- Identify top-performing products and categories.
-- Measure month-over-month growth.
-- Compare regional sales performance.
+- Analyze delivered revenue and order performance.
+- Identify high-revenue product categories.
+- Explore monthly revenue trends.
+- Compare product and seller performance.
 
 ### Customer Analytics
 - Analyze customer purchasing behavior.
-- Identify repeat customers.
-- Perform RFM analysis and customer segmentation.
-- Develop customer inactivity-risk models.
+- Identify one-time and repeat customers.
+- Perform Recency, Frequency, and Monetary (RFM) analysis.
+- Experiment with customer segmentation and inactivity-risk prediction.
 
 ### Operational Analytics
-- Analyze delivery performance and delays.
-- Evaluate seller performance.
-- Identify operational issues across regions.
+- Analyze delivery duration and punctuality.
+- Evaluate seller delivery performance.
+- Explore late deliveries and operational patterns.
 
 ### Customer Experience
-- Analyze review scores and customer satisfaction.
-- Classify review sentiment using NLP.
-- Identify recurring customer complaint themes.
+- Analyze review scores and satisfaction categories.
+- Experiment with NLP-based review sentiment classification.
+- Explore customer satisfaction and repurchase relationships.
 
 ### Forecasting and AI
-- Forecast revenue and order volumes.
-- Develop an AI-powered business insights assistant.
-- Support natural-language questions about business metrics.
-- Generate evidence-based business recommendations.
+- Evaluate a baseline for monthly revenue forecasting.
+- Build a Generative AI assistant for selected business questions.
+- Return natural-language answers grounded in retrieved business metrics.
+- Identify when the available evidence is insufficient to answer a question.
 
-### Data Pipeline
-- Support historical batch ingestion.
-- Support simulated transaction-event ingestion.
-- Support optional manual CSV uploads.
-- Validate and clean incoming data.
-- Process incremental data updates.
-- Refresh downstream analytics when appropriate.
+### Data Engineering
+- Ingest historical CSV files into PostgreSQL.
+- Transform data through Bronze, Silver, and Gold layers.
+- Validate data quality and relationships.
+- Demonstrate incremental ingestion using simulated order events.
+- Maintain SQL scripts and technical decisions under version control.
 
 ## 3. Technology Stack
 
-### Data Storage and Querying
-- PostgreSQL
-- SQL
+| Area | Technologies |
+|---|---|
+| Programming | Python |
+| Data manipulation | Pandas, NumPy |
+| Database | PostgreSQL |
+| Query language | SQL |
+| Database integration | SQLAlchemy, Psycopg 3 |
+| Business intelligence | Power BI, Power Query, DAX |
+| Machine learning | Scikit-learn |
+| NLP | TF-IDF, Logistic Regression |
+| API development | FastAPI, Pydantic |
+| Generative AI | Groq API, `openai/gpt-oss-120b` |
+| Version control | Git, GitHub |
+| Configuration | `python-dotenv` |
+
+## 4. System Architecture
+
+### 4.1 Historical Analytics Pipeline
+
+```text
+Historical Olist CSV Files
+           |
+           v
+Python Batch Ingestion
+           |
+           v
+PostgreSQL - Bronze
+           |
+           v
+SQL Transformations
+           |
+           v
+PostgreSQL - Silver
+           |
+           v
+PostgreSQL - Gold
+(Fact Tables, Dimension Tables,
+and Analytical Views)
+           |
+           +----------------------+
+           |                      |
+           v                      v
+       Power BI             Python Analytics
+                                  |
+                                  v
+                         ML / NLP / Forecasting
+```
+
+### 4.2 Incoming Order-Event Pipeline
+
+```text
+Manual Event CSV / Event Simulator
+                |
+                v
+        Python Event Ingestion
+                |
+                v
+       Bronze: order_events
+                |
+                v
+       SQL Transformation
+                |
+                v
+       Silver: order_events
+                |
+                v
+     Gold: vw_order_event_activity
+```
+
+The order-event workflow is separate from historical sales analytics. Simulated events do not automatically update historical revenue metrics or the existing historical Power BI dashboards.
+
+### 4.3 API and Generative AI
+
+```text
+User Question
+     |
+     v
+FastAPI
+     |
+     v
+Python AI Assistant
+     |
+     +----------------------+
+     |                      |
+     v                      v
+Existing Analytics       Groq API
+Functions                (LLM)
+     |                      |
+     +----------+-----------+
+                |
+                v
+       Natural-Language Answer
+```
+
+The AI assistant retrieves selected aggregate metrics from the existing analytics layer and supplies them to the language model as supporting context. It does not have unrestricted access to every database table or business metric.
+
+## 5. Data Sources
+
+### Historical Olist Dataset
+
+The project uses nine CSV datasets from the public Brazilian E-Commerce dataset by Olist, covering customers, orders, order items, payments, reviews, products, sellers, geolocation, and product-category translations.
 
-### Data Processing
-- Python
-- Pandas
-- NumPy
-- SQLAlchemy
+The historical data supports the initial data engineering pipeline, business analysis, dashboard development, and machine-learning experiments.
 
-### Business Intelligence
-- Power BI
-- Power Query
-- DAX
+### Simulated Order Events
 
-### Machine Learning
-- Scikit-learn
-- XGBoost, if appropriate
+A Python event simulator generates synthetic order-event CSV files for testing ingestion and transformation workflows.
 
-### NLP and Generative AI
-- Text-processing libraries
-- Sentiment analysis
-- Large Language Model integration
+The events are synthetic and do not represent actual transactions from a live company.
 
-### Backend and Ingestion
-- FastAPI
-- Python-based batch ingestion
-- Python-based simulated event generator
+### Manual CSV Input
 
-### Development and Testing
-- Git
-- GitHub
-- pytest, if appropriate
+The implemented manual CSV workflow supports incoming order-event files with the expected event schema.
 
-Additional technologies will be selected and documented
-when their requirements become clear.
+**General-purpose uploads of arbitrary datasets are not currently implemented.** Supporting unrelated CSV structures requires additional schema mapping, validation, transformation, and integration logic.
 
-## 4. Data Sources
+## 6. PostgreSQL Data Model
 
-### 4.1 Historical Data
+The project uses one PostgreSQL database, `ecommerce_analytics`, with three schemas.
 
-The project will use the public Brazilian E-Commerce
-dataset by Olist.
+| Schema | Responsibility |
+|---|---|
+| `bronze` | Source-faithful historical data and incoming event records |
+| `silver` | Typed, standardized, and validated data |
+| `gold` | Business-ready fact tables, dimension tables, and analytical views |
 
-It provides historical transactional and related data
-for sales, customers, products, sellers, payments,
-deliveries, and reviews.
+### Bronze Layer
 
-The historical dataset will serve as the initial
-source for analytical processing and model development.
+- Contains nine historical source tables.
+- Preserves source values and ingestion metadata.
+- Tracks ingestion attempts through `bronze.ingestion_batches`.
+- Uses SHA-256 file fingerprints to detect previously loaded file contents.
+- Uses chunk-based ingestion and per-file transaction handling.
+- Avoids silently removing source duplicates.
 
-### 4.2 Simulated Transaction Events
+### Silver Layer
 
-A Python-based simulator will generate synthetic
-e-commerce events using patterns informed by the
-historical dataset.
+- Converts source values into appropriate database types.
+- Applies SQL transformations and documented data-quality rules.
+- Enforces validated primary-key and foreign-key relationships.
+- Preserves source metadata and records `silver_processed_at`.
+- Uses composite or generated keys where source identifiers are not unique.
 
-Depending on the event type, generated data may include:
+### Gold Layer
 
-- New orders
-- Order status changes
-- Payment events
-- Delivery updates
-- Customer activity
-- Synthetic review events
+The Gold layer contains four dimension tables:
 
-The simulator will support controlled scenarios such as
-increased demand, delivery delays, and changes in
-customer satisfaction.
+- `gold.dim_customers`
+- `gold.dim_products`
+- `gold.dim_sellers`
+- `gold.dim_date`
 
-Simulated events will be clearly distinguished from
-historical observations.
+It also contains four fact tables:
 
-### 4.3 Manual CSV Uploads
+- `gold.fact_orders`
+- `gold.fact_order_items`
+- `gold.fact_payments`
+- `gold.fact_reviews`
 
-The platform will support optional CSV uploads for
-testing new data and business scenarios.
+Six historical analytical views provide reusable business queries:
 
-Uploaded files will pass through validation and
-data-quality checks before being accepted.
+1. `gold.vw_sales_performance`
+2. `gold.vw_delivery_performance`
+3. `gold.vw_customer_rfm`
+4. `gold.vw_product_performance`
+5. `gold.vw_seller_performance`
+6. `gold.vw_customer_satisfaction_repurchase`
 
-The ingestion process will check required columns,
-data types, missing values, duplicate records, and
-relevant business rules.
+The separate event workflow provides `gold.vw_order_event_activity`.
 
-Invalid records will be reported or rejected according
-to the validation rules implemented for each dataset.
+## 7. Power BI Dashboards
 
-### 4.4 Data Source Limitations
+The Power BI report contains four implemented pages.
 
-Historical data comes from a public dataset.
+| Dashboard | Purpose |
+|---|---|
+| Executive Overview | Revenue, order counts, category performance, and monthly revenue trends |
+| Customer Analytics | Repeat purchasing, RFM segments, satisfaction, and repurchase analysis |
+| Delivery & Operations | Delivered orders, delivery punctuality, average delivery duration, and delivery rate |
+| Product & Seller Performance | Category revenue, seller revenue, delivery volume, and late-order analysis |
 
-Simulated events are generated by the project and do
-not represent actual transactions from a live company.
+The dashboards use historical analytical data. Automatic refresh and integration of simulated event data into historical sales reporting are not currently implemented.
 
-Manual CSV uploads depend on the files provided by
-the user.
+## 8. Python Analytics and Machine Learning
 
-The project will not claim access to a real company's
-private production data.
+The project includes four analytical experiments.
 
-## 5. Planned System Architecture
+### Customer Segmentation
 
-### Data Sources
+K-Means clustering was used to explore customer groups based on customer-level analytical features.
 
-- Historical Olist dataset
-- Simulated transaction events
-- Optional manual CSV uploads
+- Selected cluster count: 2
+- Recorded silhouette score: approximately 0.7418
 
-### Ingestion Layer
+The result is specific to the selected experiment and is not a universal segmentation standard.
 
-- Python batch ingestion
-- FastAPI-based event ingestion
-- CSV ingestion
-- Data validation and error handling
+### Customer Inactivity-Risk Prediction
 
-### Storage Layer
+A Logistic Regression pipeline uses StandardScaler and customer recency, frequency, and monetary features.
 
-- PostgreSQL operational tables
-- Bronze layer for raw ingested data
-- Silver layer for cleaned and standardized data
-- Gold layer for business-ready analytical models
+The target is highly imbalanced, and the current model has weak active-class performance. It remains an experimental baseline and is not suitable for production customer-retention decisions.
 
-### Processing and Analytics
+### Review Sentiment Analysis
 
-- SQL transformations
-- Python ETL/ELT pipelines
-- Data-quality validation
-- Fact and dimension tables
-- Analytical views and business KPIs
+The sentiment baseline uses TF-IDF and Logistic Regression. Review scores are used to derive the sentiment labels:
 
-### Business Intelligence
+- Scores 1–2: Negative
+- Score 3: Neutral
+- Scores 4–5: Positive
 
-- Power BI dashboards
-- DAX measures
-- Interactive filters and drill-through
-- Sales, customer, and operational analytics
+The recorded accuracy is approximately 0.79, with a neutral-class F1-score of approximately 0.31. Since labels are derived from review scores rather than independent human annotations, these results do not establish human-level sentiment accuracy.
 
-### Machine Learning and AI
+### Monthly Revenue Forecasting
 
-- Customer segmentation
-- Customer inactivity-risk prediction
-- Review sentiment and complaint analysis
-- Revenue and order forecasting
-- GenAI-powered business insights
+A simple baseline forecasts monthly revenue using the last observed training-month value.
 
-### Backend and Integration
+The recorded evaluation uses 19 months for training and five months for testing:
 
-- FastAPI endpoints
-- Analytics service
-- ML inference service
-- AI assistant integration
+- MAE: approximately R$68,365.41
+- RMSE: approximately R$78,642.62
 
-### Downstream Updates
+The small test window limits the strength of the evaluation. The historical dataset ends in 2018, so the results do not validate forecasts for current business conditions.
 
-New data will be validated and processed through
-the relevant ingestion and transformation pipelines.
+## 9. FastAPI and Generative AI Assistant
 
-Power BI refreshes and model updates will be configured
-according to the supported workflow.
+The FastAPI application exposes four endpoints.
 
-The project will distinguish simulated near-real-time
-ingestion from genuinely real-time production streaming.
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/` | Root endpoint |
+| GET | `/kpis/summary` | Summary business KPIs |
+| GET | `/kpis/categories` | Category revenue information |
+| POST | `/ai/ask` | Natural-language business questions |
 
-## 6. Development Approach
+Interactive API documentation is available through Swagger UI at `/docs` when the application is running locally.
 
-The project will be developed incrementally.
+### AI Assistant Capabilities
 
-Each phase will include:
+The current assistant retrieves:
 
-1. Learning the required concepts.
-2. Implementing the functionality.
-3. Testing the implementation.
-4. Documenting the design and decisions.
-5. Recording lessons learned.
-6. Tracking changes with Git.
-7. Publishing appropriate code and documentation
-   to GitHub.
+- Total delivered item revenue.
+- Delivered order count.
+- The top five product categories by revenue.
 
-## 7. Project Status
+It sends the user's question and these selected aggregate metrics to the Groq API using the `openai/gpt-oss-120b` model.
 
-Current phase: Environment and project setup.
+The integration uses Python's built-in `urllib.request` rather than an additional AI SDK. Pydantic validates incoming questions.
 
-Planned milestones:
+### Example Question
 
-- Development environment setup
-- Git and GitHub configuration
-- Dataset exploration
-- PostgreSQL database design
-- Data ingestion and validation
-- SQL transformations
-- Python exploratory analysis
-- Power BI dashboards
-- Machine-learning models
-- NLP and forecasting
-- Simulated event ingestion
-- FastAPI integration
-- GenAI business insights assistant
-- End-to-end testing and documentation
+> What is the highest-selling product category?
 
-Milestones will be updated as features are implemented
-and verified.
+The assistant can use the supplied category-revenue context to identify the highest-revenue category among the retrieved results.
 
-## 8. Important Notes
+### Current Limitations
 
-### Data Sources
+- The assistant can answer only questions supported by the metrics its analytics functions retrieve.
+- It cannot reliably answer arbitrary monthly-trend, individual-product, seller-ranking, or customer-risk questions without additional data retrieval and analytics functions.
+- It should acknowledge insufficient evidence instead of inventing metrics or causes.
+- It requires internet access and an available external AI service.
+- Local endpoint tests do not establish production readiness.
 
-The platform combines three input methods:
+The current implementation sends selected aggregate metrics and the user's question to the provider. Raw customer review text is not sent by this assistant.
 
-1. Historical Olist data.
-2. Simulated transaction events.
-3. Optional manual CSV uploads.
+## 10. Selected Historical Results
 
-### Live Data Simulation
+The initial Bronze ingestion recorded the following row counts.
 
-The simulated event generator will create synthetic
-transactions and related events for testing incremental
-ingestion and downstream analytics.
+| Dataset | Rows |
+|---|---:|
+| Customers | 99,441 |
+| Geolocation | 1,000,163 |
+| Order items | 112,650 |
+| Payments | 103,886 |
+| Reviews | 99,224 |
+| Orders | 99,441 |
+| Products | 32,951 |
+| Sellers | 3,095 |
+| Category translation | 71 |
+| **Total** | **1,758,922** |
 
-This demonstrates a near-real-time architecture but
-does not constitute a connection to a real company's
-production transaction stream.
+Selected historical business results include:
 
-### Data Quality
+| Metric | Recorded result |
+|---|---:|
+| Delivered orders | 96,478 |
+| Delivered item revenue, excluding freight | R$13,221,498.11 |
+| Highest-revenue category in the recorded analysis | `health_beauty` |
+| Revenue for `health_beauty` | R$1,233,131.72 |
 
-Incoming data will be checked against defined schema
-and business rules before being processed.
+These figures describe the historical Olist dataset and the project's recorded analysis. They are not current 2026 business performance figures.
 
-The implementation will document how duplicates,
-missing values, invalid records, and failed ingestion
-attempts are handled.
+Selected row counts and metric reconciliations were validated during development. Validation does not prove that every business rule or interpretation is correct.
 
-### Analytics and Model Updates
+## 11. Repository Structure
 
-New data will not automatically refresh every component
-unless the relevant refresh or retraining workflow has
-been implemented and configured.
+```text
+AI-Ecommerce-Analytics/
+|
+|-- docs/
+|   |-- architecture-decisions.md
+|   |-- ai-assistant-questions.md
+|   |-- learning/
+|       |-- project-learning.md
+|
+|-- models/
+|
+|-- python/
+|   |-- ai_assistant.py
+|   |-- analytics.py
+|   |-- customer_segmentation.py
+|   |-- environment_check.py
+|   |-- inactivity_risk_model.py
+|   |-- ingest_bronze.py
+|   |-- ingest_order_events.py
+|   |-- inspect_dataset.py
+|   |-- main.py
+|   |-- predict_inactivity_risk.py
+|   |-- review_sentiment_analysis.py
+|   |-- run_pipeline.py
+|   |-- sales_forecasting.py
+|   |-- simulate_order_events.py
+|
+|-- screenshots/
+|
+|-- sql/
+|   |-- 01_create_bronze_tables.sql
+|   |-- 02_create_silver_tables.sql
+|   |-- 03_load_silver_tables.sql
+|   |-- ...
+|   |-- 18_validate_order_event_pipeline.sql
+|
+|-- .env                 # Local secrets; not committed
+|-- .gitignore
+|-- AI_Ecommerce_Analytics.pbix
+|-- README.md
+|-- test_groq_api.py
+```
 
-The project will document the update behavior of
-the database, analytical tables, Power BI reports,
-and machine-learning models.
+The repository also contains additional analysis scripts and notebooks. The tree above highlights the principal components rather than listing every file.
 
-### Security and Data Management
+## 12. Setup and Running Locally
 
-Credentials, API keys, local environment files, and
-other secrets must not be committed to GitHub.
+### Prerequisites
 
-Large raw datasets and generated artifacts will be
-managed separately from source code where appropriate.
+Install or configure:
 
-### Project Purpose
+- Python 3.11 or a compatible Python environment.
+- PostgreSQL and pgAdmin 4.
+- Git.
+- Power BI Desktop for dashboard viewing.
+- A Groq API key for the AI assistant.
 
-This project is intended for learning, technical
-demonstration, and portfolio development.
+### Step 1: Clone the Repository
 
-Its architecture and capabilities will be described
-according to what has actually been implemented
-and tested.
+```bash
+git clone https://github.com/kalekaustubh09-commits/AI-Ecommerce-Analytics.git
+cd AI-Ecommerce-Analytics
+```
+
+### Step 2: Create and Activate a Virtual Environment
+
+On Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Install the project's required Python dependencies. Use the dependency versions documented or configured in the repository rather than assuming all packages are interchangeable across versions.
+
+### Step 3: Configure PostgreSQL
+
+Create or configure the `ecommerce_analytics` database. Apply the SQL scripts in the required dependency order from the `sql/` directory.
+
+The historical pipeline requires the nine Olist CSV files to be available in the expected local data location. Check the ingestion script's configured paths before running it.
+
+### Step 4: Configure Environment Variables
+
+Create a local `.env` file using the variable names expected by the Python code.
+
+At minimum, the AI assistant requires:
+
+```text
+GROQ_API_KEY=your_groq_api_key
+```
+
+Configure the database connection variables according to the application's database configuration.
+
+**Never commit `.env` or expose API keys in source code, screenshots, or public documentation.**
+
+### Step 5: Run the Relevant Workflow
+
+Use the scripts and SQL files corresponding to the workflow you want to execute:
+
+- Historical CSV ingestion: `python/ingest_bronze.py`
+- Historical analytics: `python/analytics.py`
+- Incoming order-event workflow: `python/run_pipeline.py`
+- AI API application: start the FastAPI application using the project's configured entry point.
+
+For the API, the local Swagger interface is available at:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+The API and AI assistant require a valid local database configuration. The AI assistant also requires a valid Groq API key and internet connectivity.
+
+The exact execution order depends on the database setup and the component being run. Review the corresponding script and configuration before executing it.
+
+## 13. Data Quality and Security
+
+The project follows these principles:
+
+- Preserve source data in Bronze for traceability.
+- Validate data types and relationships before relying on downstream analytics.
+- Document duplicate-handling policies rather than silently deleting records.
+- Avoid fabricating missing values.
+- Keep historical observations distinct from simulated events.
+- Save SQL queries in version-controlled `.sql` files under `sql/`.
+- Keep secrets and local environment files out of Git.
+- Treat model results as experimental until their performance is adequately evaluated.
+- Do not claim that data ingestion, refresh, or model retraining is automatic unless that workflow has been implemented and tested.
+
+## 14. Known Limitations
+
+The platform is a learning and portfolio project, not a production-ready enterprise analytics system.
+
+Current limitations include:
+
+- Historical data is not current operational data.
+- General-purpose CSV uploads with automatic schema mapping are not implemented.
+- Simulated events do not represent real production transactions.
+- Incoming events do not automatically update historical sales metrics.
+- Power BI refresh automation is not implemented.
+- Machine-learning models require stronger evaluation before practical deployment.
+- The AI assistant supports only the metrics retrieved by its current analytics functions.
+- Authentication, rate limiting, production monitoring, and deployment security require further work.
+
+## 15. Future Enhancements
+
+Potential improvements include:
+
+- General-purpose CSV ingestion with configurable schema mapping and validation.
+- Controlled reprocessing of changed source files.
+- More comprehensive automated data-quality testing.
+- Additional SQL analytics for monthly trends, product rankings, seller performance, and delivery causes.
+- Improved customer-risk and sentiment models.
+- Stronger forecasting models with larger evaluation windows.
+- Integration of additional validated metrics into the AI assistant.
+- Scheduled ingestion, refresh orchestration, and monitoring.
+- Authentication, rate limiting, and API security.
+- Cloud deployment and production-oriented operational practices.
+- Systematic evaluation of AI responses for accuracy and unsupported claims.
+
+These items are future enhancements unless separately implemented and tested.
+
+## 16. Project Documentation
+
+Additional technical documentation is available in the repository:
+
+- **Architecture decisions:** `docs/architecture-decisions.md`
+- **Learning journal:** `docs/learning/project-learning.md`
+- **AI assistant guide:** `docs/ai-assistant-questions.md`
+- **SQL scripts and validation:** `sql/`
+- **Project screenshots:** `screenshots/`
+
+## 17. Conclusion
+
+This project demonstrates an end-to-end analytics workflow using historical e-commerce data, PostgreSQL, SQL, Python, Power BI, machine learning, FastAPI, and Generative AI.
+
+Its main focus is building traceable data pipelines, reusable business analytics, interactive dashboards, and an AI assistant that uses selected business metrics as evidence.
+
+The project documents not only its implemented capabilities but also the limitations and additional work required before the platform could be used in a production environment.
